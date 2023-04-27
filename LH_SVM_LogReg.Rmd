@@ -1,0 +1,92 @@
+---
+title: "SVM & Logistic Regression"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+dat <- read.csv('brfss_final_train.csv')
+outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
+outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDCRHD4) %>% summarise(count=n())
+
+## remove the ones that responded don't know & not sure in CVDINFR4 & CVDCRHD4
+dat <- dat[-which(dat$CVDINFR4 == 7 | dat$CVDINFR4 == 9),] 
+dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),] 
+
+# remove columns that has only 1 value for all rows
+dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
+```
+
+```{r}
+library(e1071)
+library(caret)
+library(ROCR)
+set.seed(263)
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+
+
+## Logistic Regression
+```{r}
+# Create factor variables for outcomes
+train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
+train$CVDINFR4 <- factor(ifelse(train$CVDINFR4 == 2, "no", "yes"))
+train$CVDCRHD4 <- factor(ifelse(train$CVDCRHD4 == 2, "no", "yes"))
+test$MICHD <- factor(ifelse(test$MICHD == 2, "no", "yes"))
+test$CVDINFR4 <- factor(ifelse(test$CVDINFR4 == 2, "no", "yes"))
+test$CVDCRHD4 <- factor(ifelse(test$CVDCRHD4 == 2, "no", "yes"))
+
+
+#sapply(lapply(dat, unique), length)
+mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action = na.omit, 
+               family = "binomial")
+
+
+```
+
+
+
+## SVM
+```{r}
+
+dat <- dat %>% mutate_if(is.character, as.numeric)
+dat <- dat %>% mutate_if(is.factor, as.numeric)
+dat <- dat %>% mutate_if(is.logical, as.numeric)
+
+# Fit SVM models for each outcome
+model_MICHD <- svm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action =na.omit, 
+                   type = "C-classification",kernel = "linear", cost = 1)
+model_CVDINFR4 <- svm(CVDINFR4 ~ .- MICHD - CVDCRHD4, data = train, 
+                      type = "C-classification", kernel = "linear")
+model_CVDCRHD4 <- svm(CVDCRHD4 ~ .- MICHD - CVDINFR4, data = train, 
+                      type = "C-classification", kernel = "linear")
+
+# Predict on testing set for each outcome
+pred_MICHD <- predict(model_MICHD, newdata = test)
+pred_CVDINFR4 <- predict(model_CVDINFR4, newdata = test)
+pred_CVDCRHD4 <- predict(model_CVDCRHD4, newdata = test)
+
+# Evaluate accuracy for each outcome
+confusionMatrix(pred_MICHD, test$MICHD)
+confusionMatrix(pred_CVDINFR4, test$CVDINFR4)
+confusionMatrix(pred_CVDCRHD4, test$CVDCRHD4)
+
+# Plot ROC curves for each outcome
+pred_MICHD_prob <- predict(model_MICHD, newdata = test, probability = TRUE)
+pred_CVDINFR4_prob <- predict(model_CVDINFR4, newdata = test, probability = TRUE)
+pred_CVDCRHD4_prob <- predict(model_CVDCRHD4, newdata = test, probability = TRUE)
+
+pred_MICHD_roc <- prediction(attr(pred_MICHD_prob,"probabilities")[,"yes"], test$MICHD)
+pred_CVDINFR4_roc <- prediction(attr(pred_CVDINFR4_prob,"probabilities")[,"yes"], test$CVDINFR4)
+pred_CVDCRHD4_roc <- prediction(attr(pred_CVDCRHD4_prob,"probabilities")[,"yes"], test$CVDCRHD4)
+```
+
