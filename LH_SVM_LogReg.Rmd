@@ -5,6 +5,9 @@ output: pdf_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(glmnet)
+library(dplyr)
+library(class)
 ```
 
 ```{r}
@@ -23,6 +26,44 @@ dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),]
 dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
 ```
 
+### Drop columns with more than 5% data missing, impute the rest using KNN
+```{r}
+# convert outcome variables
+dat$MICHD <- factor(2-dat$MICHD)
+dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
+dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
+
+# i believe X is the index column, not needed
+# remove weights
+dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+threshold <- .05
+ncol(dat) # 190
+
+dat <- dat[, colMeans(is.na(dat)) <= threshold]
+ncol(dat) # 52 columns left
+
+columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
+columns_to_impute
+str(dat[,columns_to_impute])
+
+complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
+                                      !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
+
+for (c in columns_to_impute) {
+    col <- dat[[c]]
+    scaled <- scale(dat[, complete_columns])
+    knn <- knn(
+        train = scaled[!is.na(col), complete_columns],
+        test  = scaled[is.na(col), complete_columns], 
+        cl    = dat[!is.na(col), c]
+        )
+    
+    dat[is.na(col), c] = knn
+}
+
+colSums(is.na(dat))
+```
+
 ```{r}
 library(e1071)
 library(caret)
@@ -38,13 +79,12 @@ test <- dat[-train_index, ]
 ## Logistic Regression
 ```{r}
 # Create factor variables for outcomes
-train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
-train$CVDINFR4 <- factor(ifelse(train$CVDINFR4 == 2, "no", "yes"))
-train$CVDCRHD4 <- factor(ifelse(train$CVDCRHD4 == 2, "no", "yes"))
-test$MICHD <- factor(ifelse(test$MICHD == 2, "no", "yes"))
-test$CVDINFR4 <- factor(ifelse(test$CVDINFR4 == 2, "no", "yes"))
-test$CVDCRHD4 <- factor(ifelse(test$CVDCRHD4 == 2, "no", "yes"))
-
+# train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
+# train$CVDINFR4 <- factor(ifelse(train$CVDINFR4 == 2, "no", "yes"))
+# train$CVDCRHD4 <- factor(ifelse(train$CVDCRHD4 == 2, "no", "yes"))
+# test$MICHD <- factor(ifelse(test$MICHD == 2, "no", "yes"))
+# test$CVDINFR4 <- factor(ifelse(test$CVDINFR4 == 2, "no", "yes"))
+# test$CVDCRHD4 <- factor(ifelse(test$CVDCRHD4 == 2, "no", "yes"))
 
 #sapply(lapply(dat, unique), length)
 mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action = na.omit, 
@@ -53,6 +93,17 @@ mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action = na.omit
 
 ```
 
+## Ridge & Lasso for Feature Selection
+
+```{r}
+x <- model.matrix(MICHD~., data=train)
+y <- train$MICHD
+grid <- seq(0, .8, length=100)
+cv_lasso <- cv.glmnet(x, as.numeric(y), alpha=1, lambda=grid, penalty.factor = c(rep(1,18), rep(0,ncol(x)-18)))
+
+print(cv_lasso)
+plot(cv_lasso)
+```
 
 
 ## SVM
