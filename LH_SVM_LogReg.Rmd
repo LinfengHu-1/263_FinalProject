@@ -78,29 +78,32 @@ test <- dat[-train_index, ]
 
 ## Linfeng - Plain Logistic Regression
 ```{r}
-# Create factor variables for outcomes
-# train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
-# train$CVDINFR4 <- factor(ifelse(train$CVDINFR4 == 2, "no", "yes"))
-# train$CVDCRHD4 <- factor(ifelse(train$CVDCRHD4 == 2, "no", "yes"))
-# test$MICHD <- factor(ifelse(test$MICHD == 2, "no", "yes"))
-# test$CVDINFR4 <- factor(ifelse(test$CVDINFR4 == 2, "no", "yes"))
-# test$CVDCRHD4 <- factor(ifelse(test$CVDCRHD4 == 2, "no", "yes"))
-
-#sapply(lapply(dat, unique), length)
-mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action = na.omit, 
-               family = "binomial")
-#summary(mylogit)
+train$MICHD <- make.names(train$MICHD)
+train$CVDCRHD4 <- make.names(train$CVDCRHD4)
+train$CVDINFR4 <- make.names(train$CVDINFR4)
+#mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4,data=train, na.action = na.omit, family="binomial")
 library(caret)
-ctrlspecs <- trainControl(method="cv", number=10, savePredictions="all", classProbs=TRUE)
-logit_cv <- train(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, method="glm", family=binomial, 
-                  trControl=ctrlspecs)
+ctrl <- trainControl(method = "cv",number = 10,classProbs = TRUE,summaryFunction = twoClassSummary)
+fit_michd <- train(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, method = "glm", 
+                   family = "binomial", trControl = ctrl, metric = "ROC")
+result_MICHD <- data.frame(fit_michd$results)
+result_MICHD <- result_MICHD[,2:4]
+result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", result_MICHD)
+fit_mi <- train(CVDINFR4 ~ .- MICHD - CVDCRHD4, data = train, method = "glm", 
+                   family = "binomial", trControl = ctrl, metric = "ROC")
+result_MI <- data.frame(fit_mi$results)
+result_MI <- result_MI[,2:4]
+result_MI <- cbind(Model = "Plain Logistic Regression", Outcome = "MI", result_MI)
+fit_chd <- train(CVDCRHD4 ~ .- CVDINFR4 - MICHD, data = train, method = "glm", 
+                   family = "binomial", trControl = ctrl, metric = "ROC")
+result_CHD <- data.frame(fit_chd$results)
+result_CHD <- result_CHD[,2:4]
+result_CHD <- cbind(Model = "Plain Logistic Regression", Outcome = "CHD", result_CHD)
 
-library(boot)
-cv_results <- cv.glm(data = train, glmfit = mylogit, K = 2)
-best_fold <- which.min(cv_results$cvm)
-best_acc <- cv_results$delta[best_fold]
-best_sen <- cv_results$delta[best_fold, "Sensitivity"]
-best_spe <- cv_results$delta[best_fold, "Specificity"]
+result_log <- rbind(result_MI, result_CHD, result_MICHD)
+
+
+
 
 ################################## Ridge Regression ############################
 # set up grid of lambda values to try
@@ -126,10 +129,6 @@ pred_class <- ifelse(pred > 0, 1, 0)
 accuracy <- mean(pred_class == test$MICHD)
 sensitivity <- sum(pred_class[test$MICHD == 1] == 1) / sum(test$MICHD == 1)
 specificity <- sum(pred_class[test$MICHD == 0] == 0) / sum(test$MICHD == 0)
-cat(paste("Best lambda:", best_lambda, "\n"))
-cat(paste("Accuracy:", accuracy, "\n"))
-cat(paste("Sensitivity:", sensitivity, "\n"))
-cat(paste("Specificity:", specificity, "\n"))
 ```
 
 ## Ridge & Lasso for Feature Selection
@@ -147,10 +146,9 @@ plot(cv_lasso)
 
 ## Linfeng - SVM
 ```{r}
-
-dat <- dat %>% mutate_if(is.character, as.numeric)
-dat <- dat %>% mutate_if(is.factor, as.numeric)
-dat <- dat %>% mutate_if(is.logical, as.numeric)
+#dat <- dat %>% mutate_if(is.character, as.numeric)
+#dat <- dat %>% mutate_if(is.factor, as.numeric)
+#dat <- dat %>% mutate_if(is.logical, as.numeric)
 
 # Fit SVM models for each outcome
 model_MICHD <- svm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action =na.omit, 
@@ -178,5 +176,16 @@ pred_CVDCRHD4_prob <- predict(model_CVDCRHD4, newdata = test, probability = TRUE
 pred_MICHD_roc <- prediction(attr(pred_MICHD_prob,"probabilities")[,"yes"], test$MICHD)
 pred_CVDINFR4_roc <- prediction(attr(pred_CVDINFR4_prob,"probabilities")[,"yes"], test$CVDINFR4)
 pred_CVDCRHD4_roc <- prediction(attr(pred_CVDCRHD4_prob,"probabilities")[,"yes"], test$CVDCRHD4)
+```
+
+
+```{r}
+# Create factor variables for outcomes
+# train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
+# train$CVDINFR4 <- factor(ifelse(train$CVDINFR4 == 2, "no", "yes"))
+# train$CVDCRHD4 <- factor(ifelse(train$CVDCRHD4 == 2, "no", "yes"))
+# test$MICHD <- factor(ifelse(test$MICHD == 2, "no", "yes"))
+# test$CVDINFR4 <- factor(ifelse(test$CVDINFR4 == 2, "no", "yes"))
+# test$CVDCRHD4 <- factor(ifelse(test$CVDCRHD4 == 2, "no", "yes"))
 ```
 
