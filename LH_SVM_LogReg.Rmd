@@ -12,7 +12,7 @@ library(class)
 
 ```{r}
 library(dplyr)
-dat <- read.csv('brfss_final_train.csv')
+dat <- read.csv('brfss_final.csv')
 outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
 outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
 outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
@@ -76,7 +76,7 @@ test <- dat[-train_index, ]
 
 
 
-## Logistic Regression
+## Linfeng - Plain Logistic Regression
 ```{r}
 # Create factor variables for outcomes
 # train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
@@ -89,8 +89,47 @@ test <- dat[-train_index, ]
 #sapply(lapply(dat, unique), length)
 mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action = na.omit, 
                family = "binomial")
+#summary(mylogit)
+library(caret)
+ctrlspecs <- trainControl(method="cv", number=10, savePredictions="all", classProbs=TRUE)
+logit_cv <- train(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, method="glm", family=binomial, 
+                  trControl=ctrlspecs)
 
+library(boot)
+cv_results <- cv.glm(data = train, glmfit = mylogit, K = 2)
+best_fold <- which.min(cv_results$cvm)
+best_acc <- cv_results$delta[best_fold]
+best_sen <- cv_results$delta[best_fold, "Sensitivity"]
+best_spe <- cv_results$delta[best_fold, "Specificity"]
 
+################################## Ridge Regression ############################
+# set up grid of lambda values to try
+lambda_grid <- 10^seq(-4, 4, by = 1)
+# perform cross-validation to tune lambda
+cv_results <- cv.glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
+                        y = train$MICHD,
+                        alpha = 0,  # L2 penalty (ridge regression)
+                        family = "binomial",
+                        type.measure = "class",  # use classification accuracy as evaluation metric
+                        lambda = lambda_grid)
+# select lambda that yields best classification accuracy
+best_lambda <- cv_results$lambda.min
+# train model on full training set with selected lambda
+mylogit <- glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
+                  y = train$MICHD,
+                  alpha = 0,  # L2 penalty (ridge regression)
+                  family = "binomial",
+                  lambda = best_lambda)
+# evaluate model performance on test set
+pred <- predict(mylogit, newx = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = test))
+pred_class <- ifelse(pred > 0, 1, 0)
+accuracy <- mean(pred_class == test$MICHD)
+sensitivity <- sum(pred_class[test$MICHD == 1] == 1) / sum(test$MICHD == 1)
+specificity <- sum(pred_class[test$MICHD == 0] == 0) / sum(test$MICHD == 0)
+cat(paste("Best lambda:", best_lambda, "\n"))
+cat(paste("Accuracy:", accuracy, "\n"))
+cat(paste("Sensitivity:", sensitivity, "\n"))
+cat(paste("Specificity:", specificity, "\n"))
 ```
 
 ## Ridge & Lasso for Feature Selection
@@ -106,7 +145,7 @@ plot(cv_lasso)
 ```
 
 
-## SVM
+## Linfeng - SVM
 ```{r}
 
 dat <- dat %>% mutate_if(is.character, as.numeric)
