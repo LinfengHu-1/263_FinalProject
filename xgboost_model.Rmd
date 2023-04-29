@@ -1,0 +1,239 @@
+---
+title: "BST 263 Final Project: XGBoost model"
+author: "Bina Choi"
+date: 2023.04.29
+output: 
+  rmdformats::html_clean:
+    thumbnails: true
+    lightbox: true
+    gallery: true
+---
+# Libraries and functions
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(janitor)
+library(xgboost)
+library(glmnet)
+library(dplyr)
+library(class)
+library(caret)
+library(e1071)
+library(caret)
+library(ROCR)
+```
+
+# Load in the data, imputation, and train/test split
+
+```{r}
+dat <- read.csv('brfss_final.csv')
+outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
+outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDCRHD4) %>% summarise(count=n())
+
+## remove the ones that responded don't know & not sure in CVDINFR4 & CVDCRHD4
+dat <- dat[-which(dat$CVDINFR4 == 7 | dat$CVDINFR4 == 9),] 
+dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),] 
+
+# remove columns that has only 1 value for all rows
+dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
+```
+
+### Drop columns with more than 5% data missing, impute the rest using KNN
+```{r}
+# convert outcome variables
+dat$MICHD <- factor(2-dat$MICHD)
+dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
+dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
+
+# i believe X is the index column, not needed
+# remove weights
+dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+threshold <- .05
+ncol(dat) # 190
+
+dat <- dat[, colMeans(is.na(dat)) <= threshold]
+ncol(dat) # 52 columns left
+
+columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
+columns_to_impute
+str(dat[,columns_to_impute])
+
+complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
+                                      !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
+
+for (c in columns_to_impute) {
+    col <- dat[[c]]
+    scaled <- scale(dat[, complete_columns])
+    knn <- knn(
+        train = scaled[!is.na(col), complete_columns],
+        test  = scaled[is.na(col), complete_columns], 
+        cl    = dat[!is.na(col), c]
+        )
+    
+    dat[is.na(col), c] = knn
+}
+
+colSums(is.na(dat))
+```
+
+```{r}
+set.seed(263)
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+In summary: 49 variables, 3 possible outcomes (MICHD, CVDINFR4, CVDCRHD4). N = 22,747 in training data, N = 5,686 in test data.
+
+```{r}
+train_variables <- train %>% 
+  select(-MICHD, -CVDINFR4, -CVDCRHD4)
+train_outcomes <- train %>% 
+  select(MICHD, CVDINFR4, CVDCRHD4) %>% 
+  mutate(across(c(MICHD, CVDINFR4, CVDCRHD4), as.factor))
+
+test_variables <- test %>% 
+  select(-MICHD, -CVDINFR4, -CVDCRHD4)
+test_outcomes <- test %>% 
+  select(MICHD, CVDINFR4, CVDCRHD4)%>% 
+  mutate(across(c(MICHD, CVDINFR4, CVDCRHD4), as.factor))
+```
+
+# XGBoost model with all 49 variables
+
+```{r}
+grid_tune <- expand.grid(
+  nrounds = c(500,1000,1500),
+  max_depth = c(2,4,6), 
+  eta = 0.3, 
+  gamma = 0, 
+  colsample_bytree = 1, 
+  min_child_weight = 1, 
+  subsample = 1 
+)
+
+train_control <- trainControl(method = "cv", # Cross validation
+                              number=3, # 3 folds
+                              verboseIter = TRUE,
+                              allowParallel = TRUE)
+xgb_tune <- train(x = train_variables,
+                  y = train_outcomes$MICHD,
+                  trControl = train_control,
+                  tuneGrid = grid_tune,
+                  method= "xgbTree",
+                  verbose = TRUE)
+xgb_tune
+
+```
+
+```{r}
+xgb_best <- xgb_tune$bestTune
+
+train_control <- trainControl(method = "none",
+                              verboseIter = TRUE,
+                              allowParallel = TRUE)
+
+final_grid <- expand.grid(nrounds = xgb_best$nrounds,
+                           eta = xgb_best$eta,
+                           max_depth = xgb_best$max_depth,
+                           gamma = xgb_best$gamma,
+                           colsample_bytree = xgb_best$colsample_bytree,
+                           min_child_weight = xgb_best$min_child_weight,
+                           subsample = xgb_best$subsample)
+xgb_model <- train(x = train_variables,
+                  y = train_outcomes$MICHD,
+                   trControl = train_control,
+                   tuneGrid = final_grid,
+                   method = "xgbTree",
+                   verbose = TRUE)
+```
+
+```{r}
+xgb_pred <- predict(xgb_model, test_variables)
+
+#' Confusion Matrix
+confusionMatrix(as.factor(as.numeric(xgb_pred)),
+                as.factor(as.numeric(test_outcomes$MICHD)))
+```
+
+# XGBoost with One-Hot encoding
+
+49 variables become 220. 
+
+Variables to remove: QSTVER, STSTR, RAWRAKE
+
+```{r}
+train_variables_2 <- train_variables %>% 
+  mutate(across(c(-PHYSHLTH, -MENTHLTH, -CPDEMO1B, -STSTR, -RAWRAKE, -AGE80, -DROCDY3_), as.character))
+
+test_variables_2 <- test_variables %>% 
+  mutate(across(c(-PHYSHLTH, -MENTHLTH, -CPDEMO1B, -STSTR, -RAWRAKE, -AGE80, -DROCDY3_), as.character))
+  
+
+dummy <- dummyVars(" ~ .", data=train_variables_2)
+train_variables_3 <- data.frame(predict(dummy, newdata = train_variables_2)) %>% 
+  select(-PRIMINSR6, -CHCCOPD39, -VETERAN33, -DEAF3, -BLIND3, -DIFFWALK3) # Remove 6 one hot encoded variables that do not exist in test dataset
+
+dummy <- dummyVars(" ~ .", data=test_variables_2)
+test_variables_3 <- data.frame(predict(dummy, newdata = test_variables_2)) 
+
+anti_join(as_tibble(colnames(train_variables_3)), as_tibble(colnames(test_variables_3)))
+```
+
+```{r}
+grid_tune <- expand.grid(
+  nrounds = c(500,1000,1500),
+  max_depth = c(2,4,6), 
+  eta = 0.3, 
+  gamma = 0, 
+  colsample_bytree = 1, 
+  min_child_weight = 1, 
+  subsample = 1 
+)
+
+train_control <- trainControl(method = "cv", # Cross validation
+                              number=3, # 3 folds
+                              verboseIter = TRUE,
+                              allowParallel = TRUE)
+xgb_tune <- train(x = train_variables_3,
+                  y = train_outcomes$MICHD,
+                  trControl = train_control,
+                  tuneGrid = grid_tune,
+                  method= "xgbTree",
+                  verbose = TRUE)
+xgb_tune
+
+```
+
+```{r}
+xgb_best <- xgb_tune$bestTune
+
+train_control <- trainControl(method = "none",
+                              verboseIter = TRUE,
+                              allowParallel = TRUE)
+
+final_grid <- expand.grid(nrounds = xgb_best$nrounds,
+                           eta = xgb_best$eta,
+                           max_depth = xgb_best$max_depth,
+                           gamma = xgb_best$gamma,
+                           colsample_bytree = xgb_best$colsample_bytree,
+                           min_child_weight = xgb_best$min_child_weight,
+                           subsample = xgb_best$subsample)
+xgb_model <- train(x = train_variables_3,
+                  y = train_outcomes$MICHD,
+                   trControl = train_control,
+                   tuneGrid = final_grid,
+                   method = "xgbTree",
+                   verbose = TRUE)
+```
+
+```{r}
+xgb_pred <- predict(xgb_model, test_variables_3)
+
+#' Confusion Matrix
+confusionMatrix(as.factor(as.numeric(xgb_pred)),
+                as.factor(as.numeric(test_outcomes$MICHD)))
+```
