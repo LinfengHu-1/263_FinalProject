@@ -36,6 +36,7 @@ dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
 # i believe X is the index column, not needed
 # remove weights
 dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+dat <- dat[, !colnames(dat) %in% c('QSTVER', 'STSTR','RAWRAKE')] # remove based on knowledge
 threshold <- .05
 ncol(dat) # 190
 
@@ -101,7 +102,7 @@ result_CHD <- result_CHD[,2:4]
 result_CHD <- cbind(Model = "Plain Logistic Regression", Outcome = "CHD", result_CHD)
 
 result_log <- rbind(result_MI, result_CHD, result_MICHD)
-
+result_log
 
 
 
@@ -146,36 +147,20 @@ plot(cv_lasso)
 
 ## Linfeng - SVM
 ```{r}
-#dat <- dat %>% mutate_if(is.character, as.numeric)
-#dat <- dat %>% mutate_if(is.factor, as.numeric)
-#dat <- dat %>% mutate_if(is.logical, as.numeric)
+ctrl <- trainControl(method = "cv", number = 3, summaryFunction = twoClassSummary, 
+                     classProbs = TRUE, verboseIter = TRUE)
+tuneGrid <- expand.grid(C = 10^(-1:1), sigma = 10^(-1:1))
+svm_model <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmRadial", trControl = ctrl, tuneGrid = tuneGrid, metric = "ROC")
+result_MICHD <- data.frame(svm_model$results)
+result_MICHD <- result_MICHD[,2:4]
+result_MICHD <- cbind(Model = "SVM - Radial", Outcome = "MICHD", result_MICHD)
 
-# Fit SVM models for each outcome
-model_MICHD <- svm(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, na.action =na.omit, 
-                   type = "C-classification",kernel = "linear", cost = 1)
-model_CVDINFR4 <- svm(CVDINFR4 ~ .- MICHD - CVDCRHD4, data = train, 
-                      type = "C-classification", kernel = "linear")
-model_CVDCRHD4 <- svm(CVDCRHD4 ~ .- MICHD - CVDINFR4, data = train, 
-                      type = "C-classification", kernel = "linear")
+library(pROC)
+roc <- roc(predictor = predict(svm_model, newdata = test, type = "prob")[,2], response = test$MICHD)
+plot(roc)
+auc(roc)
 
-# Predict on testing set for each outcome
-pred_MICHD <- predict(model_MICHD, newdata = test)
-pred_CVDINFR4 <- predict(model_CVDINFR4, newdata = test)
-pred_CVDCRHD4 <- predict(model_CVDCRHD4, newdata = test)
 
-# Evaluate accuracy for each outcome
-confusionMatrix(pred_MICHD, test$MICHD)
-confusionMatrix(pred_CVDINFR4, test$CVDINFR4)
-confusionMatrix(pred_CVDCRHD4, test$CVDCRHD4)
-
-# Plot ROC curves for each outcome
-pred_MICHD_prob <- predict(model_MICHD, newdata = test, probability = TRUE)
-pred_CVDINFR4_prob <- predict(model_CVDINFR4, newdata = test, probability = TRUE)
-pred_CVDCRHD4_prob <- predict(model_CVDCRHD4, newdata = test, probability = TRUE)
-
-pred_MICHD_roc <- prediction(attr(pred_MICHD_prob,"probabilities")[,"yes"], test$MICHD)
-pred_CVDINFR4_roc <- prediction(attr(pred_CVDINFR4_prob,"probabilities")[,"yes"], test$CVDINFR4)
-pred_CVDCRHD4_roc <- prediction(attr(pred_CVDCRHD4_prob,"probabilities")[,"yes"], test$CVDCRHD4)
 ```
 
 
