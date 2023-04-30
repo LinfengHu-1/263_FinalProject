@@ -1,0 +1,153 @@
+---
+title: "Random Forest"
+author: "Carrie Cheng"
+date: "2023-04-30"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(glmnet)
+library(dplyr)
+library(class)
+```
+
+```{r}
+library(dplyr)
+dat <- read.csv('brfss_final.csv')
+outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
+outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDCRHD4) %>% summarise(count=n())
+## remove the ones that responded don't know & not sure in CVDINFR4 & CVDCRHD4
+dat <- dat[-which(dat$CVDINFR4 == 7 | dat$CVDINFR4 == 9),] 
+dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),] 
+# remove columns that has only 1 value for all rows
+dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
+```
+
+### Drop columns with more than 5% data missing, impute the rest using KNN
+```{r}
+# convert outcome variables
+dat$MICHD <- factor(2-dat$MICHD)
+dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
+dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
+# i believe X is the index column, not needed
+# remove weights
+dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+dat <- dat[, !colnames(dat) %in% c('QSTVER', 'STSTR','RAWRAKE')] # remove based on knowledge
+threshold <- .05
+ncol(dat) # 190
+dat <- dat[, colMeans(is.na(dat)) <= threshold]
+ncol(dat) # 52 columns left
+columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
+columns_to_impute
+str(dat[,columns_to_impute])
+complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
+                                      !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
+for (c in columns_to_impute) {
+    col <- dat[[c]]
+    scaled <- scale(dat[, complete_columns])
+    knn <- knn(
+        train = scaled[!is.na(col), complete_columns],
+        test  = scaled[is.na(col), complete_columns], 
+        cl    = dat[!is.na(col), c]
+        )
+    
+    dat[is.na(col), c] = knn
+}
+colSums(is.na(dat))
+```
+
+```{r}
+library(caret)
+library(randomForest)
+library(ggplot2)
+library(ROCR)
+set.seed(263)
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+# Parameter Tuning
+
+Let's tune number of trees ntrees and number of features selected to place split mtry. In the following, let's use 10-fold cross-validation.
+
+```{r}
+
+## get index of the other two outcomes
+
+index_michd <- which(names(train) == "MICHD")
+index_infr <- which(names(train) == "CVDINFR4")
+index_crhd <- which(names(train) == "CVDCRHD4")
+
+```
+
+
+## Tune number of trees
+
+Let's set mtry = 10.
+
+```{r}
+ntree <- seq(1, 51, by = 20)
+accuracy <- sapply(ntree, function(n){
+  train(as.factor(MICHD) ~ ., method = "rf", 
+        data = train[, -c(index_infr, index_crhd)],
+        tuneGrid = data.frame(mtry = 10),
+        ntree = n, trControl = trainControl(method = "cv", number = 10))$results$Accuracy
+})
+
+qplot(ntree, accuracy)
+
+```
+
+```{r}
+best_ntree <- ntree[which(accuracy == max(accuracy))]
+print(paste("The best ntree is", best_ntree))
+```
+
+## Tune mtry
+
+```{r}
+
+train_rf <- train(as.factor(MICHD) ~ ., method = "rf", 
+                  data = train[, -c(index_infr, index_crhd)],
+                  tuneGrid = data.frame(mtry = seq(1, 20, by = 5)),
+                  ntree = 20, 
+                  nodesize = 10, trControl = trainControl(method = "cv", number = 10))
+
+plot(train_rf)
+
+best_mtry <- train_rf$bestTune
+
+result_cv <- train_rf$results
+
+print(paste("The best mtry is ", best_mtry))
+```
+
+## Use the best model to train random forest
+
+The below is the confusion matrix on the test set.
+
+```{r}
+rf_best <- randomForest(as.factor(MICHD) ~., 
+                        data = train[, -c(index_infr, index_crhd)], 
+                        mtry = best_mtry[[1]], ntree = best_ntree, nodesize = 10)
+
+pred_test <- predict(rf_best, newdata = test) 
+cm_test <- confusionMatrix(pred_test, as.factor(test$MICHD))
+
+cm_test
+```
+
+
+```{r}
+metric_test <- c(cm_test$overall[["Accuracy"]], 
+                 cm_test$byClass[c("Sensitivity","Specificity")])
+
+cat(paste("The overall accuracy using the best tuned random forest model is",
+      metric_test[1], "\n",
+      "Sensitivity is", metric_test[2], "\n",
+      "Specificity is", metric_test[3]))
+```
