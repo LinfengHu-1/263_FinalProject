@@ -104,6 +104,13 @@ result_CHD <- cbind(Model = "Plain Logistic Regression", Outcome = "CHD", result
 result_log <- rbind(result_MI, result_CHD, result_MICHD)
 result_log
 
+log_pred <- predict(fit_michd, newdata = test)
+cm <- confusionMatrix(data = log_pred, reference = factor(test$MICHD))
+cm
+library(pROC)
+svm_pred <- predict(svm_poly, newdata = test, type = "prob")
+svm_auc <- roc(factor(test$MICHD), svm_pred[,"X1"])$auc
+svm_auc
 
 
 ################################## Ridge Regression ############################
@@ -149,12 +156,57 @@ plot(cv_lasso)
 ```{r}
 ctrl <- trainControl(method = "cv", number = 3, summaryFunction = twoClassSummary, 
                      classProbs = TRUE, verboseIter = TRUE)
-tuneGrid <- expand.grid(C = 10^(-1:1), sigma = 10^(-1:1))
+tuneGrid <- expand.grid(C = c(0.1, 1, 10), sigma = c(0.1, 1, 10))
 svm_model <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmRadial", trControl = ctrl, tuneGrid = tuneGrid, metric = "ROC")
 result_MICHD <- data.frame(svm_model$results)
 result_MICHD <- result_MICHD[,1:5]
 result_MICHD <- cbind(Model = "SVM - Radial", Outcome = "MICHD", result_MICHD)
 result_MICHD
+svm_model$bestTune # C = 1, sigma = 0.1
+# get Confusion Matrix
+train$MICHD <- as.factor(train$MICHD)
+svm_model <- svm(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, cost = 1, sigma = 0.1,kernel = "radial")
+# Make predictions on the test set
+svm_pred <- predict(svm_model, newdata = test)
+accuracy <- sum(svm_pred == test$MICHD) / nrow(test)
+
+# Linear Kernel
+SVMlinearGrid <- expand.grid(C = c(0.1, 0.7, 1, 10))
+svm_linear <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmLinear", trControl = ctrl, tuneGrid = SVMlinearGrid, metric = "ROC")
+result_linear_MICHD <- data.frame(svm_linear$results)
+result_linear_MICHD <- result_linear_MICHD[,1:4]
+result_linear_MICHD <- cbind(Model = "SVM - Linear", Outcome = "MICHD", result_linear_MICHD)
+result_linear_MICHD
+svm_linear$bestTune
+svm_pred <- predict(svm_linear, newdata = test)
+# Calculate accuracy
+cm <- confusionMatrix(data = svm_pred, reference = factor(test$MICHD))
+cm
+library(pROC)
+svm_pred <- predict(svm_linear, newdata = test, type = "prob")
+svm_auc <- roc(factor(test$MICHD), svm_pred[,"X1"])$auc
+svm_auc
+
+
+# Fit the model 
+svm_poly <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmPoly", trControl = ctrl, tuneLength = 3, preProcess = c("center","scale"),metric = "ROC")
+result_poly_MICHD <- data.frame(svm_poly$results)
+result_poly_MICHD <- result_poly_MICHD[,1:6]
+result_poly_MICHD <- cbind(Model = "SVM - Polynomial", Outcome = "MICHD", result_poly_MICHD)
+result_poly_MICHD
+svm_poly$bestTune # degree = 2, scale = 0.01, C = 0.25
+# Predict on test dataset
+test$MICHD <- make.names(test$MICHD)
+test$CVDCRHD4 <- make.names(test$CVDCRHD4)
+test$CVDINFR4 <- make.names(test$CVDINFR4)
+svm_pred <- predict(svm_poly, newdata = test)
+# Calculate accuracy
+cm <- confusionMatrix(data = svm_pred, reference = factor(test$MICHD))
+cm
+library(pROC)
+svm_pred <- predict(svm_poly, newdata = test, type = "prob")
+svm_auc <- roc(factor(test$MICHD), svm_pred[,"X1"])$auc
+svm_auc
 ```
 
 
