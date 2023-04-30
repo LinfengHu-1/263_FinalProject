@@ -154,13 +154,7 @@ svm_model <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmRadia
 result_MICHD <- data.frame(svm_model$results)
 result_MICHD <- result_MICHD[,2:4]
 result_MICHD <- cbind(Model = "SVM - Radial", Outcome = "MICHD", result_MICHD)
-
-library(pROC)
-roc <- roc(predictor = predict(svm_model, newdata = test, type = "prob")[,2], response = test$MICHD)
-plot(roc)
-auc(roc)
-
-
+result_MICHD
 ```
 
 
