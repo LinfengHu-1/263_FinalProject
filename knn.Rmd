@@ -1,0 +1,160 @@
+---
+title: "project_corrmat"
+author: "Cindy Lin"
+date: "2023-04-27"
+output: html_document
+---
+
+# YH SETUP 
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(glmnet)
+library(dplyr)
+library(class)
+```
+
+```{r}
+library(dplyr)
+dat <- read.csv('brfss_final.csv')
+outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
+outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDCRHD4) %>% summarise(count=n())
+
+## remove the ones that responded don't know & not sure in CVDINFR4 & CVDCRHD4
+dat <- dat[-which(dat$CVDINFR4 == 7 | dat$CVDINFR4 == 9),] 
+dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),] 
+
+# remove columns that has only 1 value for all rows
+dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
+```
+
+### Drop columns with more than 5% data missing, impute the rest using KNN
+```{r}
+# convert outcome variables
+dat$MICHD <- factor(2-dat$MICHD)
+dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
+dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
+
+# i believe X is the index column, not needed
+# remove weights
+dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+dat <- dat[, !colnames(dat) %in% c('QSTVER', 'STSTR','RAWRAKE')] # remove based on knowledge
+threshold <- .05
+ncol(dat) # 190
+
+dat <- dat[, colMeans(is.na(dat)) <= threshold]
+ncol(dat) # 52 columns left
+
+columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
+columns_to_impute
+str(dat[,columns_to_impute])
+
+complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
+                                      !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
+
+for (c in columns_to_impute) {
+    col <- dat[[c]]
+    scaled <- scale(dat[, complete_columns])
+    knn <- knn(
+        train = scaled[!is.na(col), complete_columns],
+        test  = scaled[is.na(col), complete_columns], 
+        cl    = dat[!is.na(col), c]
+        )
+    
+    dat[is.na(col), c] = knn
+}
+
+colSums(is.na(dat))
+```
+
+```{r}
+library(e1071)
+library(caret)
+library(ROCR)
+set.seed(263)
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+## KNN
+
+```{r knn baseline}
+
+# baseline model fit for k = 1
+knn_model <- knn(train = train,
+                      test = test,
+                      cl = train$MICHD,
+                      k = 1)
+
+# compute accuracy and test error 
+#test_err <- mean(knn_model != test$MICHD)
+accuracy <- sum(knn_model == test$MICHD)/length(test$MICHD)
+sensitivity_knn <- sensitivty(knn_model, test$MICHD)
+specificity_knn <- specificity(knn_model, test$MICHD)
+
+print("Test Error and Accuracy for Baseline Model with K = 1")
+print(paste0("Test Error: ", 1 - accuracy))
+print(paste0("Accuracy: ", accuracy))
+print(paste0("Sensitivity: ", sensitivity_knn))
+print(paste0("Specificity: ", specificity_knn))
+
+
+# confusion matrix - should we all include cm, and maybe aucroc? 
+cm <- confusionMatrix(knn_model, as.factor(test$MICHD))
+cm
+
+```
+
+```{r knn tuning}
+
+# using 20-fold cross validation to find the optimal k value, since we have around 20K data points
+
+control <- trainControl(method='repeatedcv', 
+                        number = 20, 
+                        verboseIter = 20
+                        )
+
+set.seed(52)
+knn_fit <- train(MICHD ~ ., 
+                 method = 'knn', 
+                 tuneGrid = expand.grid(k = 1:200), 
+                 trControl = control, 
+                 metric = "Accuracy", 
+                 data = train)
+
+knn_fit
+
+```
+
+
+```{r best knn}
+# get metrics of knn using the best k-value  
+# best k = 18
+knn_model <- knn(train = train,
+                      test = test,
+                      cl = train$MICHD,
+                      k = 18)
+
+# compute accuracy and test error 
+#test_err <- mean(knn_model != test$MICHD)
+accuracy <- sum(knn_model == test$MICHD)/length(test$MICHD)
+#sensitivity_knn <- sensitivty(knn_model, test$MICHD)
+#specificity_knn <- specificity(knn_model, test$MICHD)
+
+print("Test Error and Accuracy for K=18")
+print(paste0("Test Error: ", 1 - accuracy))
+print(paste0("Accuracy: ", accuracy))
+#print(paste0("Sensitivity: ", sensitivity_knn))
+#print(paste0("Specificity: ", specificity_knn))
+
+
+# confusion matrix - should we all include cm, and maybe aucroc? 
+cm <- confusionMatrix(knn_model, as.factor(test$MICHD))
+cm
+
+```
+
+
+
