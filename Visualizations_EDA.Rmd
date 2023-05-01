@@ -1,0 +1,69 @@
+---
+title: "Exploratory Data Analysis"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+dat = read.csv('brfss_final.csv')
+```
+
+
+### Explore target variable
+```{r}
+MI_dat <- dat
+MI_dat$CVDINFR4 <- ifelse(MI_dat$CVDINFR4 > 2, 3, MI_dat$CVDINFR4)
+ggplot(MI_dat, aes(x = factor(CVDINFR4))) +
+  geom_bar(aes(fill = factor(CVDINFR4))) +
+  scale_fill_manual(values = c("red", "blue", "grey"), name = "Ever Reported Having MI",
+                    labels = c("No", "Yes","NA")) +
+  labs(title = "Bar Plot", x = "MI", y = "Count")
+```
+
+
+
+#### Potential Features that may be relevant based on subject-matter knowledge
+
+General Health
+```{r}
+dat %>% select(GENHLTH,SEX,MICHD) %>%
+  drop_na() %>%
+  group_by(factor(GENHLTH),factor(SEX)) %>%
+  ggplot() +
+    geom_col(aes(x=factor(GENHLTH),y=factor(MICHD),fill=factor(SEX)),
+             position="dodge") +
+    #theme(axis.text.x = element_text(angle=90, vjust = 0.5,hjust=1)) + 
+    labs(title="MI/CHD vs General health",
+         x="General Health",
+         y="MI/CHD") + 
+    scale_fill_manual(values=c('orange','grey50'))
+```
+
+```{r}
+dat %>% select(GENHLTH,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(GENHLTH)),position="fill") +
+  scale_fill_brewer("General Health Conditions", palette="Reds") +
+  labs(title="General Health Conditions vs MI/CHD",
+       x="MI/CHD",
+       y="Proportion")
+```
+
+
+
+
+
+
+
+
+
+
+
+
