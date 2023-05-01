@@ -13,6 +13,19 @@ library(dplyr)
 library(tidyr)
 dat = read.csv('brfss_final.csv')
 ```
+### Explore target variable
+```{r}
+MI_dat <- dat
+MI_dat$CVDINFR4 <- ifelse(MI_dat$CVDINFR4 > 2, 3, MI_dat$CVDINFR4)
+ggplot(MI_dat, aes(x = factor(CVDINFR4))) +
+  geom_bar(aes(fill = factor(CVDINFR4))) +
+  scale_fill_manual(values = c("#f4a599", "#92c5de", "grey"), name = "Ever Reported Having MI") +
+  labs(title = "Myocardial Infarction Bar Plot", x = "Myocardial Infarction", y = "Count") +
+  scale_x_discrete(labels = c("Yes", "No", "Missing")) +
+  theme(legend.position = "none")
+```
+
+
 ### Variable Importance
 ```{r}
 library(vip)
@@ -20,44 +33,117 @@ library(glmnet)
 #define outcome variable
 y <- dat[,"MICHD"] |> as.matrix()
 #define matrix of predictor variables
-x <- dat[, !names(dat) %in% "MICHD"] |> as.matrix()
+x <- dat[, !names(dat) %in% c("MICHD", "CVDINFR4","CVDCRHD4")] |> as.matrix()
 elasticnet.mod = glmnet(x,y,alpha=0.5,family="binomial")
 vip(elasticnet.mod, num_features=10, geom = "point")
 ```
 
+#### Explore useful features
 
-
-
-### Explore target variable
+Sex 
 ```{r}
-MI_dat <- dat
-MI_dat$CVDINFR4 <- ifelse(MI_dat$CVDINFR4 > 2, 3, MI_dat$CVDINFR4)
-ggplot(MI_dat, aes(x = factor(CVDINFR4))) +
-  geom_bar(aes(fill = factor(CVDINFR4))) +
-  scale_fill_manual(values = c("red", "blue", "grey"), name = "Ever Reported Having MI",
-                    labels = c("No", "Yes","NA")) +
-  labs(title = "Bar Plot", x = "MI", y = "Count")
+dat %>% 
+  select(SEX,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(SEX)),position="fill") +
+  scale_fill_manual("Sex", values=c("#f4a599", "#92c5de"), 
+                    labels=c("Male", "Female")) +
+  labs(title="Sex vs MI/CHD",
+       x="MI/CHD",
+       y="Sex",
+       fill="Gender") +
+  scale_x_discrete(labels = c("Yes", "No"))
+```
+
+DIABETE4: (Ever told) (you had) diabetes?
+```{r}
+dat_db <- dat
+dat_db$DIABETE4 <- ifelse(dat_db$DIABETE4 > 4, 5, dat_db$DIABETE4)
+dat_db$DIABETE4 <- ifelse(dat_db$DIABETE4 == 2, 1, dat_db$DIABETE4)
+dat_db$DIABETE4 <- ifelse(dat_db$DIABETE4 == 4, 3, dat_db$DIABETE4)
+dat_db %>% select(DIABETE4,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(DIABETE4)),position="fill") +
+  scale_fill_brewer("Diabetes History", palette="Reds",labels = c("Yes", "No", "No Response")) +
+  labs(title="Diabetes vs MI/CHD",
+       x="MI/CHD",
+       y="Diabetes") +
+  scale_x_discrete(labels = c("Yes", "No"))
+```
+
+CHCCOPD3: (Ever told) (you had) C.O.P.D. (chronic obstructive pulmonary disease), emphysema or chronic bronchitis?
+```{r}
+dat_copd <- dat
+dat_copd$CHCCOPD3 <- ifelse(dat_copd$CHCCOPD3  > 2, 3, dat_copd$CHCCOPD3)
+dat_copd %>% select(CHCCOPD3,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(CHCCOPD3)),position="fill") +
+  scale_fill_brewer("COPD History", palette="Reds",labels = c("Yes", "No", "No Response")) +
+  labs(title="COPD vs MI/CHD",
+       x="MI/CHD",
+       y="COPD") +
+  scale_x_discrete(labels = c("Yes", "No"))
+```
+
+RFHYPE6: Adults who have been told they have high blood pressure by a doctor, nurse, or other health professional [1 = NO, 2 = YES]
+```{r}
+dat_hb <- dat
+dat_hb$RFHYPE6 <- ifelse(dat_hb$RFHYPE6  > 2, 3, dat_hb$RFHYPE6)
+dat_hb %>% select(RFHYPE6,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(RFHYPE6)),position="fill") +
+  scale_fill_brewer("High Blood Pressure History", palette="Reds",
+                    labels = c("No", "Yes", "No Response")) +
+  labs(title="High Blood Pressure vs MI/CHD",
+       x="MI/CHD",
+       y="High Blood Pressure") +
+  scale_x_discrete(labels = c("No", "Yes"))
+```
+
+SMOKER3: Four-level smoker status: Everyday smoker, Someday smoker, Former smoker, Non-smoker [1-4]
+```{r}
+dat %>% select(SMOKER3,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(SMOKER3)),position="fill") +
+  scale_fill_brewer("Smoking Status", palette="Reds",
+                    labels = c(" Everyday smoker", "Someday smoker", "Former smoker",
+                               "Non-smoker", "No Response")) +
+  labs(title="Smoking vs MI/CHD",
+       x="MI/CHD",
+       y="Smoking") +
+  scale_x_discrete(labels = c("No", "Yes"))
+
+##### although not in variable importance plot, explore continuous variable about smoking#######
+
+#LCSNUMCG: On average, when you smoke/smoked regularly, about how many cigarettes do/did you usually smoke each day?
+ggplot(dat, aes(x = LCSNUMCG, y = MICHD, color = factor(SEX))) +
+  stat_smooth(method = "loess", alpha = 0.1, size = 2, aes(fill=factor(SEX))) +
+  labs(x = "Number of Cigarettes Per Day", y = "MICHD")
+
+library(reshape2)
+dat_heatmap <- dat %>% select(LCSNUMCG, MICHD) %>% drop_na()
+# Bin the continuous predictor into groups
+dat_heatmap$LCSNUMCG_group <- cut(dat_heatmap$LCSNUMCG, breaks = 10)
+heatmap_data <- dat_heatmap %>% group_by(LCSNUMCG_group, MICHD) %>% summarize(count = n())
+heatmap_data_wide <- dcast(heatmap_data, LCSNUMCG_group ~ MICHD, value.var = "count")
+my_palette <- colorRampPalette(c("white", "red"))
+
+
+
+#LCSFIRST: How old were you when you first started to smoke cigarettes regularly
+
+
+
 ```
 
 
-
-#### Potential Features that may be relevant based on subject-matter knowledge
 
 General Health
-```{r}
-dat %>% select(GENHLTH,SEX,MICHD) %>%
-  drop_na() %>%
-  group_by(factor(GENHLTH),factor(SEX)) %>%
-  ggplot() +
-    geom_col(aes(x=factor(GENHLTH),y=factor(MICHD),fill=factor(SEX)),
-             position="dodge") +
-    #theme(axis.text.x = element_text(angle=90, vjust = 0.5,hjust=1)) + 
-    labs(title="MI/CHD vs General health",
-         x="General Health",
-         y="MI/CHD") + 
-    scale_fill_manual(values=c('orange','grey50'))
-```
-
 ```{r}
 dat %>% select(GENHLTH,MICHD) %>%
   drop_na() %>%
@@ -66,15 +152,44 @@ dat %>% select(GENHLTH,MICHD) %>%
   scale_fill_brewer("General Health Conditions", palette="Reds") +
   labs(title="General Health Conditions vs MI/CHD",
        x="MI/CHD",
-       y="Proportion")
+       y="Categories of General Health") +
+  scale_x_discrete(labels = c("Yes", "No"))
+```
+
+
+QSTVER: Questionnaire Version Identifier
+10 Landline single questionnaire
+11 Landline multiple questionnaire version 1
+12 Landline multiple questionnaire version 2
+13 Landline multiple questionnaire version 3
+```{r}
+dat %>% select(QSTVER,MICHD) %>%
+  drop_na() %>%
+  ggplot() +
+  geom_bar(aes(x=factor(MICHD),fill=factor(QSTVER)),position="fill") +
+  scale_fill_brewer(" Questionnaire Version", palette="Reds") +
+  labs(title=" Questionnaire Version vs MI/CHD",
+       x="MI/CHD",
+       y=" Questionnaire Version")
 ```
 
 
 
 
-
-
-
+May be useful someday...
+```{r}
+dat %>% select(GENHLTH,QSTLANG,MICHD) %>%
+  drop_na() %>%
+  group_by(factor(GENHLTH),factor(QSTLANG)) %>%
+  ggplot() +
+    geom_col(aes(x=factor(GENHLTH),y=factor(MICHD),fill=factor(QSTLANG)),
+             position="dodge") +
+    #theme(axis.text.x = element_text(angle=90, vjust = 0.5,hjust=1)) + 
+    labs(title="MI/CHD vs General health",
+         x="General Health",
+         y="MI/CHD") + 
+    scale_fill_manual(values=c('orange','grey50'))
+```
 
 
 
