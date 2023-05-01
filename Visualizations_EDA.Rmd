@@ -13,6 +13,19 @@ library(dplyr)
 library(tidyr)
 dat = read.csv('brfss_final.csv')
 ```
+### Variable Importance
+```{r}
+library(vip)
+library(glmnet)
+#define outcome variable
+y <- dat[,"MICHD"] |> as.matrix()
+#define matrix of predictor variables
+x <- dat[, !names(dat) %in% "MICHD"] |> as.matrix()
+elasticnet.mod = glmnet(x,y,alpha=0.5,family="binomial")
+vip(elasticnet.mod, num_features=10, geom = "point")
+```
+
+
 
 
 ### Explore target variable
