@@ -130,28 +130,13 @@ dat %>% select(SMOKER3,MICHD) %>%
        x="MI/CHD",
        y="Smoking") +
   scale_x_discrete(labels = c("No", "Yes"))
+```
 
-##### although not in variable importance plot, explore continuous variable about smoking#######
-
-#LCSNUMCG: On average, when you smoke/smoked regularly, about how many cigarettes do/did you usually smoke each day?
-ggplot(dat, aes(x = LCSNUMCG, y = MICHD, color = factor(SEX))) +
-  stat_smooth(method = "loess", alpha = 0.1, size = 2, aes(fill=factor(SEX))) +
-  labs(x = "Number of Cigarettes Per Day", y = "MICHD")
-
-library(reshape2)
-dat_heatmap <- dat %>% select(LCSNUMCG, MICHD) %>% drop_na()
-# Bin the continuous predictor into groups
-dat_heatmap$LCSNUMCG_group <- cut(dat_heatmap$LCSNUMCG, breaks = 10)
-heatmap_data <- dat_heatmap %>% group_by(LCSNUMCG_group, MICHD) %>% summarize(count = n())
-heatmap_data_wide <- dcast(heatmap_data, LCSNUMCG_group ~ MICHD, value.var = "count")
-my_palette <- colorRampPalette(c("white", "red"))
-
-
-
-#LCSFIRST: How old were you when you first started to smoke cigarettes regularly
-
-
-
+```{r}
+ggplot(dat, aes(x = AGE80, fill = factor(MICHD))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density Plot of AGE by MICHD", x = "AGE80", y = "Density") +
+  scale_fill_manual(values = c("#F8766D", "#00BA38"), name = "MICHD", labels = c("No", "Yes"))
 ```
 
 
@@ -169,6 +154,25 @@ dat %>% select(GENHLTH,MICHD) %>%
   scale_x_discrete(labels = c("Yes", "No"))
 ```
 
+Physical Health
+```{r}
+ggplot(dat, aes(x = PHYSHLTH, y = factor(MICHD))) +
+  geom_boxplot() +
+  stat_summary(fun = mean, geom = "point", shape = 20, size = 3, color = "red", position = position_dodge(width = 0.75)) +
+  labs(title = "Age vs MICHD", x = "Age", y = "MICHD") +
+  scale_y_discrete(labels = c("No", "Yes"))
+
+############ density plot #############
+ggplot(dat, aes(x = PHYSHLTH, fill = factor(MICHD))) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density Plot of PHYSHLTH by MICHD", x = "PHYSHLTH", y = "Density") +
+  scale_fill_manual(values = c("#F8766D", "#00BA38"), name = "MICHD", labels = c("No", "Yes"))
+
+```
+
+
+
+
 
 QSTVER: Questionnaire Version Identifier
 10 Landline single questionnaire
@@ -184,16 +188,7 @@ QSTVER: Questionnaire Version Identifier
 #   labs(title=" Questionnaire Version vs MI/CHD",
 #        x="MI/CHD",
 #        y=" Questionnaire Version")
-
-ggplot(dat, aes(x = MENTHLTH, y = factor(MICHD))) +
-  geom_boxplot() +
-  labs(title = "Age vs MICHD", x = "Age", y = "MICHD") +
-  scale_y_discrete(labels = c("No", "Yes"))
 ```
-
-
-
-
 May be useful someday...
 ```{r}
 dat %>% select(GENHLTH,QSTLANG,MICHD) %>%

@@ -92,14 +92,17 @@ index_weight <- which(names(train) == "weights")
 index_michd <- which(names(train) == "MICHD")
 index_infr <- which(names(train) == "CVDINFR4")
 index_crhd <- which(names(train) == "CVDCRHD4")
+
+index_weight_train <- which(names(train) == "weights")
+index_weight_test <- which(names(test) == "weights")
 ```
 
 
 ```{r}
 library(randomForest)
 rf_best <- randomForest(as.factor(MICHD) ~.,
-                        data = train[, -c(index_infr, index_crhd)],
-                        mtry = 6, ntree = 21, nodesize = 10)
+                        data = train[, -c(index_infr, index_crhd, index_weight_train)],
+                        mtry = 6, ntree = 21, nodesize = 10, weights = train[, index_weight])
 ```
 
 ```{r}
