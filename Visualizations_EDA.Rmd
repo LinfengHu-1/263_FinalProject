@@ -176,14 +176,19 @@ QSTVER: Questionnaire Version Identifier
 12 Landline multiple questionnaire version 2
 13 Landline multiple questionnaire version 3
 ```{r}
-dat %>% select(QSTVER,MICHD) %>%
-  drop_na() %>%
-  ggplot() +
-  geom_bar(aes(x=factor(MICHD),fill=factor(QSTVER)),position="fill") +
-  scale_fill_brewer(" Questionnaire Version", palette="Reds") +
-  labs(title=" Questionnaire Version vs MI/CHD",
-       x="MI/CHD",
-       y=" Questionnaire Version")
+# dat %>% select(QSTVER,MICHD) %>%
+#   drop_na() %>%
+#   ggplot() +
+#   geom_bar(aes(x=factor(MICHD),fill=factor(QSTVER)),position="fill") +
+#   scale_fill_brewer(" Questionnaire Version", palette="Reds") +
+#   labs(title=" Questionnaire Version vs MI/CHD",
+#        x="MI/CHD",
+#        y=" Questionnaire Version")
+
+ggplot(dat, aes(x = MENTHLTH, y = factor(MICHD))) +
+  geom_boxplot() +
+  labs(title = "Age vs MICHD", x = "Age", y = "MICHD") +
+  scale_y_discrete(labels = c("No", "Yes"))
 ```
 
 
