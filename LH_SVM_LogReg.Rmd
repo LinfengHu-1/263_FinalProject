@@ -122,7 +122,6 @@ roc_log_pc <- roc(roc_data$actual, roc_data$predicted)
 #  labs(title = "Receiver Operating Characteristic (ROC) Curve",
 #       x = "False Positive Rate (1 - Specificity)",
 #       y = "True Positive Rate (Sensitivity)")
-plot(roc_log_pc, col = "blue", main = "ROC curves", print.auc = TRUE, auc.polygon = TRUE, legacy.axes = TRUE)
 ```
 
 
@@ -324,27 +323,20 @@ svm_auc
 
 Plain logistic regression
 ```{r}
-#plot(roc_log_pc, col = "blue", main = "ROC curves", print.auc = TRUE, 
-#     auc.polygon = TRUE, legacy.axes = TRUE, xlim = c(1.2, -0.2))
-#plot(roc_log_normal, col = "red", add = TRUE, print.auc = TRUE, 
-#     auc.polygon = TRUE, legacy.axes = TRUE)
-#legend("bottomright", legend = c("Plain Logistic Regression - PCA", "Plain Logistic Regression"),
-#       col = c("blue", "red"), lty = 1, cex = 0.6)
 library(ggplot2)
 library(scales)
 # Create data frames with the ROC curve data for each model
 roc_pc_df <- data.frame(fpr = roc_log_pc$specificities, tpr = roc_log_pc$sensitivities)
 roc_normal_df <- data.frame(fpr = roc_log_normal$specificities, tpr = roc_log_normal$sensitivities)
-# Create the combined ROC plot
 ggplot() +
-  geom_line(data = roc_pc_df, aes(x = fpr, y = tpr, color = "Plain Logistic Regression - PCA")) +
-  geom_line(data = roc_normal_df, aes(x = fpr, y = tpr, color = "Plain Logistic Regression")) +
-  scale_color_manual(name = "Models", values = c("blue", "red")) +
-  labs(x = "False Positive Rate", y = "True Positive Rate", 
-       title = "ROC curves for Plain Logistic Regression") +
+  geom_line(data = roc_pc_df, aes(x = fpr, y = tpr, linetype = "Plain Logistic Regression - PCA"), color = "blue", size = 0.6) +
+  geom_line(data = roc_normal_df, aes(x = fpr, y = tpr, linetype = "Plain Logistic Regression"), color = "blue", size = 0.6) +
+  scale_linetype_manual(name = "Models", values = c("Plain Logistic Regression - PCA" = "dashed", "Plain Logistic Regression" = "solid")) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", title = "ROC curves for Plain Logistic Regression") +
   xlim(1,0)+
   theme_classic() +
   theme(legend.position = "bottom")
+
 ```
 
 SVM
@@ -372,6 +364,17 @@ pred_rbf_normal <- predict(svm_rbf_normal, test)
 pred_linear_normal <- predict(svm_linear_normal, test)
 pred_poly_normal <- predict(svm_poly_normal, test)
 
+confusionMatrix(data = factor(round(pred_rbf_normal)), reference = factor(as.numeric(test$MICHD)))
+pred_linear_normal_new <- round(pred_linear_normal)
+pred_linear_normal_new <- ifelse(pred_linear_normal_new <= 1, 1, pred_linear_normal_new)
+pred_linear_normal_new <- ifelse(pred_linear_normal_new >= 2, 2, pred_linear_normal_new)
+confusionMatrix(data = factor(pred_linear_normal_new), 
+                reference = factor(as.numeric(test$MICHD)))
+pred_poly_normal_new <- round(pred_poly_normal)
+pred_poly_normal_new <- ifelse(pred_poly_normal_new <= 1, 1, pred_poly_normal_new)
+pred_poly_normal_new <- ifelse(pred_poly_normal_new >= 2, 2, pred_poly_normal_new)
+confusionMatrix(data = factor(pred_poly_normal_new), reference = factor(as.numeric(test$MICHD)))
+
 # Calculate the ROC curve and AUC for each SVM model
 roc_rbf_pca <- roc(test_pc$MICHD, round(pred_rbf_pca))
 roc_linear_pca <- roc(test_pc$MICHD, round(pred_linear_pca))
@@ -392,27 +395,32 @@ roc_poly_normal_df <- data.frame(fpr = roc_poly_normal$specificities,
                                  tpr = roc_poly_normal$sensitivities)
 # Create the combined ROC plot
 ggplot() +
-  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA", linetype = "solid")) +
-  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA", linetype = "solid")) +
-  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA", linetype = "solid")) +
-  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)", linetype = "dashed")) +
-  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)", linetype = "dashed")) +
-  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)", linetype = "dashed")) +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)")) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)")) +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)")) +
   scale_color_manual(name = "Models", 
-                     values = c("SVM(RBF) - PCA" = "red", 
-                                "SVM(Linear) - PCA" = "blue", 
-                                "SVM(Polynomial) - PCA" = "green", 
-                                "SVM(RBF)" = "red", 
+                     values = c("SVM(RBF)" = "red", 
                                 "SVM(Linear)" = "blue", 
                                 "SVM(Polynomial)" = "green")) +
-  scale_linetype_manual(name = "Models", 
-                        values = c("solid", "dashed", "solid", "dashed", "solid", "dashed")) +
   labs(x = "False Positive Rate", y = "True Positive Rate", 
        title = "ROC curves for Support Vector Machine") +
   xlim(1,0) +
   theme_classic() +
   theme(legend.position = "bottom")
 ```
+```
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 ```{r}
@@ -503,54 +511,3 @@ ggplot() +
 
 
 
-
-```{r}
-ggplot() +
-  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)")) +
-  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)")) +
-  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)")) +
-  scale_color_manual(name = "Models", 
-                     values = c("SVM(RBF)" = "red", 
-                                "SVM(Linear)" = "blue", 
-                                "SVM(Polynomial)" = "green")) +
-  labs(x = "False Positive Rate", y = "True Positive Rate", 
-       title = "ROC curves for Support Vector Machine") +
-  xlim(1,0) +
-  theme_classic() +
-  theme(legend.position = "bottom")
-```
-
-
-
-
-
-
-
-
-
-```{r}
-################################## Ridge Regression ############################
-# set up grid of lambda values to try
-lambda_grid <- 10^seq(-4, 4, by = 1)
-# perform cross-validation to tune lambda
-cv_results <- cv.glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
-                        y = train$MICHD,
-                        alpha = 0,  # L2 penalty (ridge regression)
-                        family = "binomial",
-                        type.measure = "class",  # use classification accuracy as evaluation metric
-                        lambda = lambda_grid)
-# select lambda that yields best classification accuracy
-best_lambda <- cv_results$lambda.min
-# train model on full training set with selected lambda
-mylogit <- glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
-                  y = train$MICHD,
-                  alpha = 0,  # L2 penalty (ridge regression)
-                  family = "binomial",
-                  lambda = best_lambda)
-# evaluate model performance on test set
-pred <- predict(mylogit, newx = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = test))
-pred_class <- ifelse(pred > 0, 1, 0)
-accuracy <- mean(pred_class == test$MICHD)
-sensitivity <- sum(pred_class[test$MICHD == 1] == 1) / sum(test$MICHD == 1)
-specificity <- sum(pred_class[test$MICHD == 0] == 0) / sum(test$MICHD == 0)
-```
