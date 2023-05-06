@@ -44,7 +44,7 @@ dat <- dat[, colMeans(is.na(dat)) <= threshold]
 ncol(dat) # 52 columns left
 
 columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
-columns_to_impute
+#columns_to_impute
 str(dat[,columns_to_impute])
 
 complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
@@ -65,6 +65,58 @@ for (c in columns_to_impute) {
 colSums(is.na(dat))
 ```
 
+### PCA
+
+```{r}
+dat <- dat[, !(colnames(dat) %in% c("CVDINFR4","CVDCRHD4"))]
+
+
+dat_pc <- apply(dat, 2, as.numeric)
+pca <- prcomp(dat_pc, scale. = TRUE)  
+#summary(pca)
+pca_data <- predict(pca, newdata = dat_pc)[, 1:30]  
+
+# new data frame with top 30 PCs & the outcome variable
+pca_dat <- data.frame(pca_data, MICHD = dat$MICHD)
+
+set.seed(263)
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train_pc <- pca_dat[train_index, ]
+test_pc <- pca_dat[-train_index, ]
+
+#logit_model <- glm(MICHD ~ ., data = pca_dat, family = binomial(link = "logit"))
+train_pc$MICHD <- make.names(train_pc$MICHD)
+ctrl <- trainControl(method = "cv",number = 10,classProbs = TRUE,
+                     summaryFunction = twoClassSummary, savePredictions = TRUE)
+fit_michd <- train(MICHD ~ ., data = train_pc, method = "glm", 
+                   family = "binomial", trControl = ctrl, metric = "ROC")
+result_MICHD <- data.frame(fit_michd$results)
+result_MICHD <- result_MICHD[,2:4]
+result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", result_MICHD)
+result_MICHD
+
+
+test_pc$MICHD <- make.names(test_pc$MICHD)
+log_pred <- predict(fit_michd, newdata = test_pc)
+cm <- confusionMatrix(data = log_pred, reference = factor(test_pc$MICHD))
+cm
+
+# Extract the prediction values as numeric
+log_pred <- as.numeric(predict(fit_michd, newdata = test_pc))
+roc_data <- data.frame(actual = test_pc$MICHD, predicted = log_pred)
+library(pROC)
+roc <- roc(roc_data$actual, roc_data$predicted)
+ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
+  geom_line(aes(x = x, y = y)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve",
+       x = "False Positive Rate (1 - Specificity)",
+       y = "True Positive Rate (Sensitivity)")
+```
+
+
+### Start modeling
+
 ```{r}
 library(e1071)
 library(caret)
@@ -80,17 +132,17 @@ test <- dat[-train_index, ]
 ## Linfeng - Plain Logistic Regression
 ```{r}
 train$MICHD <- make.names(train$MICHD)
-train$CVDCRHD4 <- make.names(train$CVDCRHD4)
-train$CVDINFR4 <- make.names(train$CVDINFR4)
+#train$CVDCRHD4 <- make.names(train$CVDCRHD4)
+#train$CVDINFR4 <- make.names(train$CVDINFR4)
 test$MICHD <- make.names(test$MICHD)
-test$CVDCRHD4 <- make.names(test$CVDCRHD4)
-test$CVDINFR4 <- make.names(test$CVDINFR4)
+#test$CVDCRHD4 <- make.names(test$CVDCRHD4)
+#test$CVDINFR4 <- make.names(test$CVDINFR4)
 #mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4,data=train, na.action = na.omit, family="binomial")
 library(caret)
 ctrl <- trainControl(method = "cv",number = 10,classProbs = TRUE,
                      summaryFunction = twoClassSummary, savePredictions = TRUE)
-fit_michd <- train(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train, method = "glm", 
-                   family = "binomial", trControl = ctrl, metric = "ROC")
+fit_michd <- train(MICHD ~ ., data = train, method = "glm", 
+                   family = "binomial", trControl = ctrl, metric = "Accuracy")
 result_MICHD <- data.frame(fit_michd$results)
 result_MICHD <- result_MICHD[,2:4]
 result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", result_MICHD)
@@ -141,11 +193,86 @@ plot(cv_lasso)
 
 
 ## Linfeng - SVM
+
+## SVM with PCA
 ```{r}
 ctrl <- trainControl(method = "cv", number = 3, summaryFunction = twoClassSummary, 
                      classProbs = TRUE, verboseIter = TRUE)
 tuneGrid <- expand.grid(C = c(0.1, 1, 10), sigma = c(0.1, 1, 10))
-svm_model <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmRadial", trControl = ctrl, tuneGrid = tuneGrid, metric = "ROC")
+svm_model <- train(MICHD ~ ., data = train_pc, method = "svmRadial", trControl = ctrl, tuneGrid = tuneGrid, metric = "ROC")
+#sigma = 0.1, C = 10
+svmlin_pred <- predict(svm_model, newdata = test_pc)
+cm <- confusionMatrix(data = svmlin_pred, reference = factor(test_pc$MICHD))
+cm
+svmlin_pred <- as.numeric(predict(svm_model, newdata = test_pc))
+roc_data <- data.frame(actual = test_pc$MICHD, predicted = svmlin_pred)
+library(pROC)
+roc <- roc(roc_data$actual, roc_data$predicted)
+ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
+  geom_line(aes(x = x, y = y)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve",
+       x = "False Positive Rate (1 - Specificity)",
+       y = "True Positive Rate (Sensitivity)")
+############################ Linear ############################
+SVMlinearGrid <- expand.grid(C = c(0.1, 0.7, 1, 10))
+svm_linear <- train(MICHD ~ ., data = train_pc, method = "svmLinear", trControl = ctrl, tuneGrid = SVMlinearGrid, metric = "ROC")
+result_linear_MICHD <- data.frame(svm_linear$results)
+result_linear_MICHD <- result_linear_MICHD[,1:4]
+result_linear_MICHD <- cbind(Model = "SVM - Linear", Outcome = "MICHD", result_linear_MICHD)
+result_linear_MICHD
+svm_linear$bestTune #  C = 0.7
+svm_pred <- predict(svm_linear, newdata = test_pc)
+cm <- confusionMatrix(data = svm_pred, reference = factor(test_pc$MICHD))
+cm
+svm_pred <- as.numeric(svm_pred)
+roc_data <- data.frame(actual = test_pc$MICHD, predicted = svm_pred)
+roc <- roc(roc_data$actual, roc_data$predicted)
+ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
+  geom_line(aes(x = x, y = y)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve",
+       x = "False Positive Rate (1 - Specificity)",
+       y = "True Positive Rate (Sensitivity)")
+############################ Polynomial ############################
+svm_poly <- train(MICHD ~ ., data = train_pc, method = "svmPoly", trControl = ctrl, tuneLength = 3, preProcess = c("center","scale"),metric = "ROC")
+result_poly_MICHD <- data.frame(svm_poly$results)
+result_poly_MICHD <- result_poly_MICHD[,1:6]
+result_poly_MICHD <- cbind(Model = "SVM - Polynomial", Outcome = "MICHD", result_poly_MICHD)
+result_poly_MICHD
+svm_poly$bestTune # degree = 3, scale = 0.01, C = 1
+# Predict on test dataset
+# Construct the SVM with the best hyperparameters
+svm_poly <- svm(as.numeric(factor(train_pc$MICHD)) ~ ., data = train_pc, kernel = "polynomial", 
+                degree = 3, gamma = 1/0.01, cost = 1)
+predictions <- predict(svm_poly, test_pc)
+
+
+# Predict using the SVM on the test data
+predictions = svm_poly.predict(test_pc)
+svm_pred <- predict(svm_poly, newdata = test_pc)
+# Calculate accuracy
+cm <- confusionMatrix(data = svm_pred, reference = factor(test$MICHD_pc))
+cm
+svm_pred <- as.numeric(svm_pred)
+roc_data <- data.frame(actual = test_pc$MICHD, predicted = svm_pred)
+roc <- roc(roc_data$actual, roc_data$predicted)
+ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
+  geom_line(aes(x = x, y = y)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+  labs(title = "Receiver Operating Characteristic (ROC) Curve",
+       x = "False Positive Rate (1 - Specificity)",
+       y = "True Positive Rate (Sensitivity)")
+```
+
+
+
+## plain SVM
+```{r}
+ctrl <- trainControl(method = "cv", number = 3, summaryFunction = twoClassSummary, 
+                     classProbs = TRUE, verboseIter = TRUE)
+tuneGrid <- expand.grid(C = c(0.1, 1, 10), sigma = c(0.1, 1, 10))
+svm_model <- train(MICHD ~ ., data = train, method = "svmRadial", trControl = ctrl, tuneGrid = tuneGrid, metric = "ROC")
 result_MICHD <- data.frame(svm_model$results)
 result_MICHD <- result_MICHD[,1:5]
 result_MICHD <- cbind(Model = "SVM - Radial", Outcome = "MICHD", result_MICHD)
@@ -153,14 +280,14 @@ result_MICHD
 svm_model$bestTune # C = 1, sigma = 0.1
 # get Confusion Matrix
 train$MICHD <- as.factor(train$MICHD)
-svm_model <- svm(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, cost = 1, sigma = 0.1,kernel = "radial")
+svm_model <- svm(MICHD ~ ., data = train, cost = 1, sigma = 0.1,kernel = "radial")
 # Make predictions on the test set
 svm_pred <- predict(svm_model, newdata = test)
 accuracy <- sum(svm_pred == test$MICHD) / nrow(test)
 
 # Linear Kernel
 SVMlinearGrid <- expand.grid(C = c(0.1, 0.7, 1, 10))
-svm_linear <- train(MICHD ~ .-CVDINFR4-CVDCRHD4, data = train, method = "svmLinear", trControl = ctrl, tuneGrid = SVMlinearGrid, metric = "ROC")
+svm_linear <- train(MICHD ~ ., data = train, method = "svmLinear", trControl = ctrl, tuneGrid = SVMlinearGrid, metric = "ROC")
 result_linear_MICHD <- data.frame(svm_linear$results)
 result_linear_MICHD <- result_linear_MICHD[,1:4]
 result_linear_MICHD <- cbind(Model = "SVM - Linear", Outcome = "MICHD", result_linear_MICHD)
