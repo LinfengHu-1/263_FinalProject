@@ -65,25 +65,36 @@ for (c in columns_to_impute) {
 colSums(is.na(dat))
 ```
 
+
+### Start modeling
+
+```{r}
+library(e1071)
+library(caret)
+library(ROCR)
+library(pROC)
+set.seed(263)
+dat <- dat[, !(colnames(dat) %in% c("CVDINFR4","CVDCRHD4"))]
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+
 ### PCA
 
 ```{r}
-dat <- dat[, !(colnames(dat) %in% c("CVDINFR4","CVDCRHD4"))]
+train_data <- train[, !(colnames(train) %in% c("MICHD"))]
+test_data <- test[, !(colnames(test) %in% c("MICHD"))]
 
-
-dat_pc <- apply(dat, 2, as.numeric)
-pca <- prcomp(dat_pc, scale. = TRUE)  
-#summary(pca)
-pca_data <- predict(pca, newdata = dat_pc)[, 1:30]  
-
-# new data frame with top 30 PCs & the outcome variable
-pca_dat <- data.frame(pca_data, MICHD = dat$MICHD)
-
-set.seed(263)
-library(caret)
-train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
-train_pc <- pca_dat[train_index, ]
-test_pc <- pca_dat[-train_index, ]
+train_pc <- apply(train_data, 2, as.numeric)
+pca <- prcomp(train_pc, scale. = TRUE)  
+pca_data <- predict(pca, newdata = train_pc)[, 1:30]  
+train_pc <- data.frame(pca_data, MICHD = train$MICHD)
+test_pc <- apply(test_data, 2, as.numeric)
+pca <- prcomp(test_pc, scale. = TRUE)  
+pca_data <- predict(pca, newdata = test_pc)[, 1:30]  
+test_pc <- data.frame(pca_data, MICHD = test$MICHD)
 
 #logit_model <- glm(MICHD ~ ., data = pca_dat, family = binomial(link = "logit"))
 train_pc$MICHD <- make.names(train_pc$MICHD)
@@ -96,7 +107,6 @@ result_MICHD <- result_MICHD[,2:4]
 result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", result_MICHD)
 result_MICHD
 
-
 test_pc$MICHD <- make.names(test_pc$MICHD)
 log_pred <- predict(fit_michd, newdata = test_pc)
 cm <- confusionMatrix(data = log_pred, reference = factor(test_pc$MICHD))
@@ -105,7 +115,6 @@ cm
 # Extract the prediction values as numeric
 log_pred <- as.numeric(predict(fit_michd, newdata = test_pc))
 roc_data <- data.frame(actual = test_pc$MICHD, predicted = log_pred)
-library(pROC)
 roc_log_pc <- roc(roc_data$actual, roc_data$predicted)
 #ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
 #  geom_line(aes(x = x, y = y)) +
@@ -117,17 +126,7 @@ plot(roc_log_pc, col = "blue", main = "ROC curves", print.auc = TRUE, auc.polygo
 ```
 
 
-### Start modeling
 
-```{r}
-library(e1071)
-library(caret)
-library(ROCR)
-set.seed(263)
-train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
-train <- dat[train_index, ]
-test <- dat[-train_index, ]
-```
 
 
 
@@ -498,35 +497,29 @@ ggplot() +
 
 ```
 
+
+
+
+
+
+
+
 ```{r}
 ggplot() +
-  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA"),
-            linetype = "solid", color = "red") +
-  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA"),
-            linetype = "solid", color = "blue") +
-  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)) - PCA"),
-            linetype = "solid", color = "green") +
-  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)"),
-             linetype = "dashed", color = "red") +
-  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)"),
-             linetype = "dashed", color = "blue") +
-  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)"),
-             linetype = "dashed", color = "green") +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)")) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)")) +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)")) +
   scale_color_manual(name = "Models", 
-                     values = c("SVM(RBF) - PCA" = "red", 
-                                "SVM(Linear) - PCA" = "blue", 
-                                "SVM(Polynomial) - PCA" = "green", 
-                                "SVM(RBF)" = "red", 
+                     values = c("SVM(RBF)" = "red", 
                                 "SVM(Linear)" = "blue", 
                                 "SVM(Polynomial)" = "green")) +
   labs(x = "False Positive Rate", y = "True Positive Rate", 
        title = "ROC curves for Support Vector Machine") +
-  xlim(1,0)+
+  xlim(1,0) +
   theme_classic() +
-  guides(color = guide_legend(title = "Models", override.aes = list(linetype = rep(" ",6)))) +
   theme(legend.position = "bottom")
-
 ```
+
 
 
 
