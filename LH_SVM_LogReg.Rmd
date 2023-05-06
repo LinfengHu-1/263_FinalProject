@@ -80,6 +80,7 @@ pca_data <- predict(pca, newdata = dat_pc)[, 1:30]
 pca_dat <- data.frame(pca_data, MICHD = dat$MICHD)
 
 set.seed(263)
+library(caret)
 train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
 train_pc <- pca_dat[train_index, ]
 test_pc <- pca_dat[-train_index, ]
@@ -105,13 +106,14 @@ cm
 log_pred <- as.numeric(predict(fit_michd, newdata = test_pc))
 roc_data <- data.frame(actual = test_pc$MICHD, predicted = log_pred)
 library(pROC)
-roc <- roc(roc_data$actual, roc_data$predicted)
-ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
-  geom_line(aes(x = x, y = y)) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  labs(title = "Receiver Operating Characteristic (ROC) Curve",
-       x = "False Positive Rate (1 - Specificity)",
-       y = "True Positive Rate (Sensitivity)")
+roc_log_pc <- roc(roc_data$actual, roc_data$predicted)
+#ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
+#  geom_line(aes(x = x, y = y)) +
+#  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
+#  labs(title = "Receiver Operating Characteristic (ROC) Curve",
+#       x = "False Positive Rate (1 - Specificity)",
+#       y = "True Positive Rate (Sensitivity)")
+plot(roc_log_pc, col = "blue", main = "ROC curves", print.auc = TRUE, auc.polygon = TRUE, legacy.axes = TRUE)
 ```
 
 
@@ -142,7 +144,7 @@ library(caret)
 ctrl <- trainControl(method = "cv",number = 10,classProbs = TRUE,
                      summaryFunction = twoClassSummary, savePredictions = TRUE)
 fit_michd <- train(MICHD ~ ., data = train, method = "glm", 
-                   family = "binomial", trControl = ctrl, metric = "Accuracy")
+                   family = "binomial", trControl = ctrl, metric = "ROC")
 result_MICHD <- data.frame(fit_michd$results)
 result_MICHD <- result_MICHD[,2:4]
 result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", result_MICHD)
@@ -163,12 +165,10 @@ result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", re
 log_pred <- predict(fit_michd, newdata = test)
 cm <- confusionMatrix(data = log_pred, reference = factor(test$MICHD))
 cm
-
-# Extract the prediction values as numeric
 log_pred <- as.numeric(predict(fit_michd, newdata = test))
 roc_data <- data.frame(actual = test$MICHD, predicted = log_pred)
 library(pROC)
-roc <- roc(roc_data$actual, roc_data$predicted)
+roc_log_normal <- roc(roc_data$actual, roc_data$predicted)
 ggplot(data = data.frame(x = 1 - roc$specificities, y = roc$sensitivities)) +
   geom_line(aes(x = x, y = y)) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
@@ -321,16 +321,219 @@ svm_auc <- roc(factor(test$MICHD), svm_pred[,"X1"])$auc
 svm_auc
 ```
 
+## ROC plots
+
+Plain logistic regression
+```{r}
+#plot(roc_log_pc, col = "blue", main = "ROC curves", print.auc = TRUE, 
+#     auc.polygon = TRUE, legacy.axes = TRUE, xlim = c(1.2, -0.2))
+#plot(roc_log_normal, col = "red", add = TRUE, print.auc = TRUE, 
+#     auc.polygon = TRUE, legacy.axes = TRUE)
+#legend("bottomright", legend = c("Plain Logistic Regression - PCA", "Plain Logistic Regression"),
+#       col = c("blue", "red"), lty = 1, cex = 0.6)
+library(ggplot2)
+library(scales)
+# Create data frames with the ROC curve data for each model
+roc_pc_df <- data.frame(fpr = roc_log_pc$specificities, tpr = roc_log_pc$sensitivities)
+roc_normal_df <- data.frame(fpr = roc_log_normal$specificities, tpr = roc_log_normal$sensitivities)
+# Create the combined ROC plot
+ggplot() +
+  geom_line(data = roc_pc_df, aes(x = fpr, y = tpr, color = "Plain Logistic Regression - PCA")) +
+  geom_line(data = roc_normal_df, aes(x = fpr, y = tpr, color = "Plain Logistic Regression")) +
+  scale_color_manual(name = "Models", values = c("blue", "red")) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves for Plain Logistic Regression") +
+  xlim(1,0)+
+  theme_classic() +
+  theme(legend.position = "bottom")
+```
+
+SVM
+```{r}
+#PCA: Radial - sigma = 0.1, C = 10; Linear - C = 0.7; Polynomial - degree = 3, scale = 0.01, C = 1
+svm_rbf_pca <- svm(as.numeric(factor(MICHD)) ~ ., 
+                   data = train_pc, kernel = "radial", gamma = 0.1, cost = 10)
+svm_linear_pca <- svm(as.numeric(factor(MICHD)) ~ ., data = train_pc, kernel = "linear", cost = 0.7)
+svm_poly_pca <- svm(as.numeric(factor(MICHD)) ~ ., data = train_pc, kernel = "polynomial", 
+                    degree = 3, cost = 1, scale = 0.01)
+#normal: Radial - C = 1, sigma = 0.1; Linear - C = 10; Polynomial - degree = 2, scale = 0.01, C = 0.25
+svm_rbf_normal <- svm(as.numeric(factor(MICHD)) ~ ., data = train, kernel = "radial", 
+                      gamma = 0.1, cost = 1)
+svm_linear_normal <- svm(as.numeric(factor(MICHD)) ~ ., data = train, kernel = "linear", cost = 10)
+svm_poly_normal <- svm(as.numeric(factor(MICHD)) ~ ., data = train, kernel = "polynomial", 
+                       degree = 2, cost = 0.25, scale = 0.01)
+
+
+# Make predictions on the test set for each SVM model
+test_pc <- predict(preProcess(test, method = c("center", "scale", "pca"))$pca, test)
+pred_rbf_pca <- predict(svm_rbf_pca, test_pc)
+pred_linear_pca <- predict(svm_linear_pca, test_pc)
+pred_poly_pca <- predict(svm_poly_pca, test_pc)
+pred_rbf_normal <- predict(svm_rbf_normal, test)
+pred_linear_normal <- predict(svm_linear_normal, test)
+pred_poly_normal <- predict(svm_poly_normal, test)
+
+# Calculate the ROC curve and AUC for each SVM model
+roc_rbf_pca <- roc(test_pc$MICHD, round(pred_rbf_pca))
+roc_linear_pca <- roc(test_pc$MICHD, round(pred_linear_pca))
+roc_poly_pca <- roc(test_pc$MICHD, round(pred_poly_pca))
+roc_rbf_normal <- roc(test$MICHD, round(pred_rbf_normal))
+roc_linear_normal <- roc(test$MICHD, round(pred_linear_normal))
+roc_poly_normal <- roc(test$MICHD, round(pred_poly_normal))
+
+roc_rbf_pca_df <- data.frame(fpr = roc_rbf_pca$specificities, tpr = roc_rbf_pca$sensitivities)
+roc_linear_pca_df <- data.frame(fpr = roc_linear_pca$specificities, 
+                                tpr = roc_linear_pca$sensitivities)
+roc_poly_pca_df <- data.frame(fpr = roc_poly_pca$specificities, tpr = roc_poly_pca$sensitivities)
+roc_rbf_normal_df <- data.frame(fpr = roc_rbf_normal$specificities, 
+                                tpr = roc_rbf_normal$sensitivities)
+roc_linear_normal_df <- data.frame(fpr = roc_linear_normal$specificities, 
+                                   tpr = roc_linear_normal$sensitivities)
+roc_poly_normal_df <- data.frame(fpr = roc_poly_normal$specificities, 
+                                 tpr = roc_poly_normal$sensitivities)
+# Create the combined ROC plot
+ggplot() +
+  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA", linetype = "solid")) +
+  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA", linetype = "solid")) +
+  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA", linetype = "solid")) +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)", linetype = "dashed")) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)", linetype = "dashed")) +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)", linetype = "dashed")) +
+  scale_color_manual(name = "Models", 
+                     values = c("SVM(RBF) - PCA" = "red", 
+                                "SVM(Linear) - PCA" = "blue", 
+                                "SVM(Polynomial) - PCA" = "green", 
+                                "SVM(RBF)" = "red", 
+                                "SVM(Linear)" = "blue", 
+                                "SVM(Polynomial)" = "green")) +
+  scale_linetype_manual(name = "Models", 
+                        values = c("solid", "dashed", "solid", "dashed", "solid", "dashed")) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves for Support Vector Machine") +
+  xlim(1,0) +
+  theme_classic() +
+  theme(legend.position = "bottom")
+```
+
 
 ```{r}
-# Create factor variables for outcomes
-# train$MICHD <- factor(ifelse(train$MICHD == 2, "no", "yes"))
-# train$CVDINFR4 <- factor(ifelse(train$CVDINFR4 == 2, "no", "yes"))
-# train$CVDCRHD4 <- factor(ifelse(train$CVDCRHD4 == 2, "no", "yes"))
-# test$MICHD <- factor(ifelse(test$MICHD == 2, "no", "yes"))
-# test$CVDINFR4 <- factor(ifelse(test$CVDINFR4 == 2, "no", "yes"))
-# test$CVDCRHD4 <- factor(ifelse(test$CVDCRHD4 == 2, "no", "yes"))
+ggplot() +
+  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA"),
+            linetype = "solid", color = "red",show.legend = TRUE) +
+  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA"),
+            linetype = "solid", color = "blue",show.legend = TRUE) +
+  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA"),
+            linetype = "solid", color = "green",show.legend = TRUE) +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)"),
+            linetype = "dashed", color = "red",show.legend = TRUE) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)"),
+            linetype = "dashed", color = "blue",show.legend = TRUE) +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)"),
+            linetype = "dashed", color = "green",show.legend = TRUE) +
+  scale_color_manual(name = "Models", 
+                     values = c("SVM(RBF) - PCA" = "red", 
+                                "SVM(Linear) - PCA" = "blue", 
+                                "SVM(Polynomial) - PCA" = "green", 
+                                "SVM(RBF)" = "red", 
+                                "SVM(Linear)" = "blue", 
+                                "SVM(Polynomial)" = "green"),
+                     labels = c("SVM(RBF) - PCA", "SVM(Linear) - PCA", "SVM(Polynomial) - PCA",
+                                "SVM(RBF)", "SVM(Linear)", "SVM(Polynomial)")) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves for Support Vector Machine") +
+  xlim(1,0) +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
 ```
+
+
+```{r}
+ggplot() +
+  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA", linetype = "solid")) +
+  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA", linetype = "solid")) +
+  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA", linetype = "solid")) +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)", linetype = "dashed")) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)", linetype = "dashed")) +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)", linetype = "dashed")) +
+  scale_color_manual(name = "Models", 
+                     values = c("SVM(RBF) - PCA" = "red", 
+                                "SVM(Linear) - PCA" = "blue", 
+                                "SVM(Polynomial) - PCA" = "green", 
+                                "SVM(RBF)" = "red", 
+                                "SVM(Linear)" = "blue", 
+                                "SVM(Polynomial)" = "green")) +
+  scale_linetype_manual(name = "Models", 
+                        values = c("solid", "dashed", "solid", "dashed", "solid", "dashed")) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves for Support Vector Machine") +
+  xlim(1,0) +
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+
+```{r}
+ggplot() +
+  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA"), linetype = "solid", size = 1) +
+  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA"), linetype = "solid", size = 1) +
+  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA"), linetype = "solid", size = 1) +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)"), linetype = "dashed", size = 1) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)"), linetype = "dashed", size = 1) +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)"), linetype = "dashed", size = 1) +
+  scale_color_manual(name = "Models", 
+                     values = c("SVM(RBF) - PCA" = "red", 
+                                "SVM(Linear) - PCA" = "blue", 
+                                "SVM(Polynomial) - PCA" = "green", 
+                                "SVM(RBF)" = "red", 
+                                "SVM(Linear)" = "blue", 
+                                "SVM(Polynomial)" = "green"),
+                     guide = guide_legend(override.aes = list(linetype = c("solid", "solid", "solid", "dashed", "dashed", "dashed")))) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves for Support Vector Machine") +
+  xlim(1,0)+
+  theme_classic() +
+  theme(legend.position = "bottom")
+
+```
+
+```{r}
+ggplot() +
+  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA"),
+            linetype = "solid", color = "red") +
+  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA"),
+            linetype = "solid", color = "blue") +
+  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)) - PCA"),
+            linetype = "solid", color = "green") +
+  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)"),
+             linetype = "dashed", color = "red") +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)"),
+             linetype = "dashed", color = "blue") +
+  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)"),
+             linetype = "dashed", color = "green") +
+  scale_color_manual(name = "Models", 
+                     values = c("SVM(RBF) - PCA" = "red", 
+                                "SVM(Linear) - PCA" = "blue", 
+                                "SVM(Polynomial) - PCA" = "green", 
+                                "SVM(RBF)" = "red", 
+                                "SVM(Linear)" = "blue", 
+                                "SVM(Polynomial)" = "green")) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves for Support Vector Machine") +
+  xlim(1,0)+
+  theme_classic() +
+  guides(color = guide_legend(title = "Models", override.aes = list(linetype = rep(" ",6)))) +
+  theme(legend.position = "bottom")
+
+```
+
+
+
+
+
+
+
 
 ```{r}
 ################################## Ridge Regression ############################
