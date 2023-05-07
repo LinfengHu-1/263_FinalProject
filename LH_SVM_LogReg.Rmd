@@ -452,7 +452,7 @@ ggplot() +
                                 "SVM(RBF)" = "red", 
                                 "SVM(Linear)" = "blue", 
                                 "SVM(Polynomial)" = "green"),
-                     guide = guide_legend(override.aes = list(linetype = c("solid", "solid", "solid", "dashed", "dashed", "dashed")))) +
+                     guide = guide_legend(override.aes = list(linetype = c("solid", "dashed", "solid","dashed", "solid",   "dashed")))) +
   labs(x = "False Positive Rate", y = "True Positive Rate", 
        title = "ROC curves for Support Vector Machine") +
   xlim(1,0)+
