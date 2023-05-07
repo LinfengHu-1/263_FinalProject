@@ -1,0 +1,148 @@
+---
+title: "Penalized Logistic Regression"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(glmnet)
+library(dplyr)
+library(class)
+```
+
+```{r}
+library(dplyr)
+dat <- read.csv('brfss_final.csv')
+outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
+outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDCRHD4) %>% summarise(count=n())
+
+## remove the ones that responded don't know & not sure in CVDINFR4 & CVDCRHD4
+dat <- dat[-which(dat$CVDINFR4 == 7 | dat$CVDINFR4 == 9),] 
+dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),] 
+
+# remove columns that has only 1 value for all rows
+dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
+```
+
+### Drop columns with more than 5% data missing, impute the rest using KNN
+```{r}
+# convert outcome variables
+dat$MICHD <- factor(2-dat$MICHD)
+dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
+dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
+
+# i believe X is the index column, not needed
+# remove weights
+dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+dat <- dat[, !colnames(dat) %in% c('QSTVER', 'STSTR','RAWRAKE')] # remove based on knowledge
+threshold <- .05
+ncol(dat) # 190
+
+dat <- dat[, colMeans(is.na(dat)) <= threshold]
+ncol(dat) # 52 columns left
+
+columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
+columns_to_impute
+str(dat[,columns_to_impute])
+
+complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
+                                      !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
+
+for (c in columns_to_impute) {
+    col <- dat[[c]]
+    scaled <- scale(dat[, complete_columns])
+    knn <- knn(
+        train = scaled[!is.na(col), complete_columns],
+        test  = scaled[is.na(col), complete_columns], 
+        cl    = dat[!is.na(col), c]
+        )
+    
+    dat[is.na(col), c] = knn
+}
+
+colSums(is.na(dat))
+```
+
+```{r}
+library(e1071)
+library(caret)
+library(ROCR)
+set.seed(263)
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+
+
+```{r}
+################################## Ridge Regression ############################
+# set up grid of lambda values to try
+library(pROC)
+set.seed(263)
+lambda_grid <- 10**seq(-4, -1, by=.1)
+# perform cross-validation to tune lambda
+cv_results <- cv.glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
+                        y = train$MICHD,
+                        alpha = 0,  # L2 penalty (ridge regression)
+                        family = "binomial",
+                        type.measure = "class",  # use classification accuracy as evaluation metric
+                        lambda = lambda_grid)
+# select lambda that yields best classification accuracy
+best_lambda <- cv_results$lambda.min
+print(best_lambda)
+# train model on full training set with selected lambda
+ridge <- glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
+                  y = train$MICHD,
+                  alpha = 0,  # L2 penalty (ridge regression)
+                  family = "binomial",
+                  lambda = best_lambda)
+# evaluate model performance on test set
+pred <- predict(ridge, newx = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = test))
+pred_class <- ifelse(pred > 0, 1, 0)
+accuracy <- mean(pred_class == test$MICHD)
+print(accuracy)
+sensitivity <- sum(pred_class[test$MICHD == 1] == 1) / sum(test$MICHD == 1)
+print(sensitivity)
+specificity <- sum(pred_class[test$MICHD == 0] == 0) / sum(test$MICHD == 0)
+print(specificity)
+plot(cv_results)
+auc(roc(test$MICHD,pred_class)) 
+```
+```{r}
+################################## Lasso Regression ############################
+# set up grid of lambda values to try
+set.seed(263)
+lambda_grid <- 10**seq(-4, -1, by=.1)
+# perform cross-validation to tune lambda
+cv_results <- cv.glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
+                        y = train$MICHD,
+                        alpha = 1, 
+                        family = "binomial",
+                        type.measure = "class",  # use classification accuracy as evaluation metric
+                        lambda = lambda_grid)
+# select lambda that yields best classification accuracy
+best_lambda <- cv_results$lambda.min
+print(best_lambda)
+
+# train model on full training set with selected lambda
+lasso <- glmnet(x = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = train),
+                  y = train$MICHD,
+                  alpha = 1,  
+                  family = "binomial",
+                  lambda = best_lambda)
+lasso$beta
+# evaluate model performance on test set
+pred <- predict(lasso, newx = model.matrix(MICHD ~ .- CVDINFR4 - CVDCRHD4, data = test))
+pred_class <- ifelse(pred > 0, 1, 0)
+accuracy <- mean(pred_class == test$MICHD)
+print(accuracy)
+sensitivity <- sum(pred_class[test$MICHD == 1] == 1) / sum(test$MICHD == 1)
+print(sensitivity)
+specificity <- sum(pred_class[test$MICHD == 0] == 0) / sum(test$MICHD == 0)
+print(specificity)
+plot(cv_results)
+auc(roc(test$MICHD,pred_class)) 
+```
