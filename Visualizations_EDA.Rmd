@@ -17,11 +17,22 @@ dat = read.csv('brfss_final.csv')
 
 ## Table 1
 ```{r}
+library(e1071)
+library(caret)
+library(ROCR)
+library(pROC)
+set.seed(263)
+dat <- dat[, !(colnames(dat) %in% c("CVDINFR4","CVDCRHD4"))]
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+```{r}
 library(table1)
-dat1 <- dat
 dat1$MICHD <- factor(dat1$MICHD, levels=c(1,2),
                      labels=c("Reported having MI or CHD", "Did not report having MI or CHD"))
-table1(~ .- CVDINFR4 - CVDCRHD4 | MICHD, data=dat1)
+table1(~ . | MICHD, data=train)
 ```
 
 
@@ -114,7 +125,7 @@ dat_hb %>% select(RFHYPE6,MICHD) %>%
   labs(title="High Blood Pressure vs MI/CHD",
        x="MI/CHD",
        y="High Blood Pressure") +
-  scale_x_discrete(labels = c("No", "Yes"))
+  scale_x_discrete(labels = c("Yes", "No"))
 ```
 
 SMOKER3: Four-level smoker status: Everyday smoker, Someday smoker, Former smoker, Non-smoker [1-4]

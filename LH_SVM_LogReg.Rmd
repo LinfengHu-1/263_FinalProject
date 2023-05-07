@@ -135,12 +135,7 @@ roc_log_pc <- roc(roc_data$actual, roc_data$predicted)
 ## Linfeng - Plain Logistic Regression
 ```{r}
 train$MICHD <- make.names(train$MICHD)
-#train$CVDCRHD4 <- make.names(train$CVDCRHD4)
-#train$CVDINFR4 <- make.names(train$CVDINFR4)
 test$MICHD <- make.names(test$MICHD)
-#test$CVDCRHD4 <- make.names(test$CVDCRHD4)
-#test$CVDINFR4 <- make.names(test$CVDINFR4)
-#mylogit <- glm(MICHD ~ .- CVDINFR4 - CVDCRHD4,data=train, na.action = na.omit, family="binomial")
 library(caret)
 ctrl <- trainControl(method = "cv",number = 10,classProbs = TRUE,
                      summaryFunction = twoClassSummary, savePredictions = TRUE)
@@ -149,20 +144,6 @@ fit_michd <- train(MICHD ~ ., data = train, method = "glm",
 result_MICHD <- data.frame(fit_michd$results)
 result_MICHD <- result_MICHD[,2:4]
 result_MICHD <- cbind(Model = "Plain Logistic Regression", Outcome = "MICHD", result_MICHD)
-# fit_mi <- train(CVDINFR4 ~ .- MICHD - CVDCRHD4, data = train, method = "glm", 
-#                    family = "binomial", trControl = ctrl, metric = "ROC")
-# result_MI <- data.frame(fit_mi$results)
-# result_MI <- result_MI[,2:4]
-# result_MI <- cbind(Model = "Plain Logistic Regression", Outcome = "MI", result_MI)
-# fit_chd <- train(CVDCRHD4 ~ .- CVDINFR4 - MICHD, data = train, method = "glm", 
-#                    family = "binomial", trControl = ctrl, metric = "ROC")
-# result_CHD <- data.frame(fit_chd$results)
-# result_CHD <- result_CHD[,2:4]
-# result_CHD <- cbind(Model = "Plain Logistic Regression", Outcome = "CHD", result_CHD)
-# 
-# result_log <- rbind(result_MI, result_CHD, result_MICHD)
-# result_log
-
 log_pred <- predict(fit_michd, newdata = test)
 cm <- confusionMatrix(data = log_pred, reference = factor(test$MICHD))
 cm
@@ -368,75 +349,6 @@ confusionMatrix(data = factor(pred_poly_pca_new), reference = factor(as.numeric(
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-```{r}
-ggplot() +
-  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA"),
-            linetype = "solid", color = "red",show.legend = TRUE) +
-  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA"),
-            linetype = "solid", color = "blue",show.legend = TRUE) +
-  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA"),
-            linetype = "solid", color = "green",show.legend = TRUE) +
-  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)"),
-            linetype = "dashed", color = "red",show.legend = TRUE) +
-  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)"),
-            linetype = "dashed", color = "blue",show.legend = TRUE) +
-  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)"),
-            linetype = "dashed", color = "green",show.legend = TRUE) +
-  scale_color_manual(name = "Models", 
-                     values = c("SVM(RBF) - PCA" = "red", 
-                                "SVM(Linear) - PCA" = "blue", 
-                                "SVM(Polynomial) - PCA" = "green", 
-                                "SVM(RBF)" = "red", 
-                                "SVM(Linear)" = "blue", 
-                                "SVM(Polynomial)" = "green"),
-                     labels = c("SVM(RBF) - PCA", "SVM(Linear) - PCA", "SVM(Polynomial) - PCA",
-                                "SVM(RBF)", "SVM(Linear)", "SVM(Polynomial)")) +
-  labs(x = "False Positive Rate", y = "True Positive Rate", 
-       title = "ROC curves for Support Vector Machine") +
-  xlim(1,0) +
-  theme_classic() +
-  theme(legend.position = "bottom")
-
-```
-
-
-```{r}
-ggplot() +
-  geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA", linetype = "solid")) +
-  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA", linetype = "solid")) +
-  geom_line(data = roc_poly_pca_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial) - PCA", linetype = "solid")) +
-  geom_line(data = roc_rbf_normal_df, aes(x = fpr, y = tpr, color = "SVM(RBF)", linetype = "dashed")) +
-  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)", linetype = "dashed")) +
-  geom_line(data = roc_poly_normal_df, aes(x = fpr, y = tpr, color = "SVM(Polynomial)", linetype = "dashed")) +
-  scale_color_manual(name = "Models", 
-                     values = c("SVM(RBF) - PCA" = "red", 
-                                "SVM(Linear) - PCA" = "blue", 
-                                "SVM(Polynomial) - PCA" = "green", 
-                                "SVM(RBF)" = "red", 
-                                "SVM(Linear)" = "blue", 
-                                "SVM(Polynomial)" = "green")) +
-  scale_linetype_manual(name = "Models", 
-                        values = c("solid", "dashed", "solid", "dashed", "solid", "dashed")) +
-  labs(x = "False Positive Rate", y = "True Positive Rate", 
-       title = "ROC curves for Support Vector Machine") +
-  xlim(1,0) +
-  theme_classic() +
-  theme(legend.position = "bottom")
-
-```
-
-
 ```{r}
 ggplot() +
   geom_line(data = roc_rbf_pca_df, aes(x = fpr, y = tpr, color = "SVM(RBF) - PCA"), linetype = "solid", size = 0.7) +
@@ -461,12 +373,105 @@ ggplot() +
 
 ```
 
+## plotting all ROCs together
+
+```{r}
+xgboost_pred <- read.csv("final_xgboost_outcomes.csv")
+xgboost <- roc(xgboost_pred$xgb_pred, xgboost_pred$test_outcomes)
+xgboost_df <- data.frame(fpr = xgboost$specificities, tpr = xgboost$sensitivities)
+```
+```{r}
+library(randomForest)
+rf_best <- randomForest(as.factor(MICHD) ~., data = train, 
+                        mtry = 11, ntree = 41, nodesize = 10)
+pred_rf <- predict(rf_best, newdata = test) 
+rf <- roc(test$MICHD, as.numeric(pred_rf))
+rf_df <- data.frame(fpr = rf$specificities, tpr = rf$sensitivities)
+```
+```{r}
+########## Ridge ############
+lambda_grid <- 10**seq(-4, -1, by=.1)
+cv_results <- cv.glmnet(x = model.matrix(MICHD ~ ., data = train), y = train$MICHD, alpha = 0, 
+                        family = "binomial", type.measure = "class", lambda = lambda_grid)
+best_lambda <- cv_results$lambda.min
+ridge <- glmnet(x = model.matrix(MICHD ~ ., data = train),y = train$MICHD,
+                alpha = 0, family = "binomial", lambda = best_lambda)
+pred_ridge <- predict(ridge, newx = model.matrix(MICHD ~ ., data = test))
+pred_ridge <- ifelse(pred_ridge > 0, 1, 0)
+ridge <- roc(test$MICHD, as.numeric(pred_ridge))
+ridge_df <- data.frame(fpr = ridge$specificities, tpr = ridge$sensitivities)
+###### plain logistic regression ######
+log_df <- data.frame(fpr = roc_log_normal$specificities, tpr = roc_log_normal$sensitivities)
+```
+```{r}
+######## knn ############
+pred_knn <- knn(train = train, test = test, cl = train$MICHD, k = 27)
+knn1 <- roc(test$MICHD, as.numeric(pred_knn))
+knn1_df <- data.frame(fpr = knn1$specificities, tpr = knn1$sensitivities)
+######### knn with PCA #######
+dat2 <- dat %>% select(-c("CVDINFR4", "CVDCRHD4", "MICHD"))
+dat2 <- sapply(dat2, function (x) as.numeric(x))
+pca <- prcomp(dat2, scale.=TRUE)
+pca30 <- pca$x[,1:30]
+pca30_df <- data.frame(pca30, MICHD=dat$MICHD)
+train_index <- createDataPartition(pca30_df$MICHD, p = 0.8, list = FALSE)
+train <- pca30_df[train_index, ]
+test <- pca30_df[-train_index, ]
+pred_knn_pc <- knn(train = train, test = test, cl = train$MICHD, k = 198)
+knnpc <- roc(test$MICHD, as.numeric(pred_knn_pc))
+knnpc_df <- data.frame(fpr = knnpc$specificities, tpr = knnpc$sensitivities)
+```
+
+
+
+
+```{r}
+ggplot() +
+  geom_line(data = roc_linear_pca_df, aes(x = fpr, y = tpr, color = "SVM(Linear) - PCA"), 
+            linetype = "solid", size = 0.7) +
+  geom_line(data = roc_linear_normal_df, aes(x = fpr, y = tpr, color = "SVM(Linear)"), 
+            linetype = "dashed", size = 0.7) +
+  geom_line(data = xgboost_df, aes(x = fpr, y = tpr, color = "XGBoost"), 
+            linetype = "solid", size = 0.7) + 
+  geom_line(data = rf_df, aes(x = fpr, y = tpr, color = "Random Forest"), 
+            linetype = "solid", size = 0.7) + 
+  geom_line(data = ridge_df, aes(x = fpr, y = tpr, color = "Penalized Logistic Regression"),
+            linetype = "solid", size = 0.7) + 
+  geom_line(data = knn1_df, aes(x = fpr, y = tpr, color = "kNN"),
+            linetype = "solid", size = 0.7) + 
+  geom_line(data = knnpc_df, aes(x = fpr, y = tpr, color = "kNN - PCA"),
+            linetype = "dashed", size = 0.7) + 
+  scale_color_manual(name = "Models", 
+                     values = c("SVM(Linear) - PCA" = "dodgerblue", 
+                                "SVM(Linear)" = "dodgerblue", 
+                                "XGBoost" = "gold",
+                                "Random Forest" = "forestgreen",
+                                "Penalized Logistic Regression" = "darkorchid",
+                                "kNN" = "firebrick2",
+                                "kNN - PCA" = "firebrick2"),
+                     guide = guide_legend(override.aes = list(linetype = c("solid","dashed", "solid","solid", "solid","dashed", "solid")))) +
+  labs(x = "False Positive Rate", y = "True Positive Rate", 
+       title = "ROC curves") +
+  xlim(1,0)+
+  theme_classic() 
+#+ theme(legend.position = "bottom")
+```
 
 
 
 
 
-## SVM with PCA 
+
+
+
+
+
+
+
+
+
+
+## DISCARD - SVM with PCA 
 
 ```{r}
 ctrl <- trainControl(method = "cv", number = 3, summaryFunction = twoClassSummary, 

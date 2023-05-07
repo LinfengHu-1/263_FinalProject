@@ -1,0 +1,87 @@
+---
+title: "table1"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(glmnet)
+library(dplyr)
+library(class)
+dat <- read.csv('brfss_final.csv')
+outcome <- data.frame(dat$X,dat$MICHD,dat$CVDINFR4,dat$CVDCRHD4)
+outcome %>% group_by(dat.MICHD) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDINFR4) %>% summarise(count=n())
+outcome %>% group_by(dat.CVDCRHD4) %>% summarise(count=n())
+
+## remove the ones that responded don't know & not sure in CVDINFR4 & CVDCRHD4
+dat <- dat[-which(dat$CVDINFR4 == 7 | dat$CVDINFR4 == 9),] 
+dat <- dat[-which(dat$CVDCRHD4 == 7 | dat$CVDCRHD4 == 9),] 
+
+# remove columns that has only 1 value for all rows
+dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS"))]
+# convert outcome variables
+dat$MICHD <- factor(2-dat$MICHD)
+dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
+dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
+
+# i believe X is the index column, not needed
+# remove weights
+dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
+dat <- dat[, !colnames(dat) %in% c('QSTVER', 'STSTR','RAWRAKE')] # remove based on knowledge
+threshold <- .05
+ncol(dat) # 190
+
+dat <- dat[, colMeans(is.na(dat)) <= threshold]
+ncol(dat) # 52 columns left
+
+columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
+#columns_to_impute
+str(dat[,columns_to_impute])
+
+complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
+                                      !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
+
+for (c in columns_to_impute) {
+    col <- dat[[c]]
+    scaled <- scale(dat[, complete_columns])
+    knn <- knn(
+        train = scaled[!is.na(col), complete_columns],
+        test  = scaled[is.na(col), complete_columns], 
+        cl    = dat[!is.na(col), c]
+        )
+    
+    dat[is.na(col), c] = knn
+}
+
+colSums(is.na(dat))
+library(e1071)
+library(caret)
+library(ROCR)
+library(pROC)
+set.seed(263)
+dat <- dat[, !(colnames(dat) %in% c("CVDINFR4","CVDCRHD4"))]
+train_index <- createDataPartition(dat$MICHD, p = 0.8, list = FALSE)
+train <- dat[train_index, ]
+test <- dat[-train_index, ]
+```
+
+
+
+```{r}
+test <- test[, (colnames(test) %in% c("AGE80", "SEX", "RACE", "BMI5", "SMOKER3", "DROCDY3_",
+                                         "TOTINDA", "RFHYPE6", "CHOLCH3", "MICHD"))]
+library(table1)
+train$MICHD <- factor(train$MICHD, levels=c(1,2),
+                     labels=c("Reported having MI or CHD", "Did not report having MI or CHD"))
+table1(~ . | MICHD, data=test)
+
+
+test_0 <- test[test$MICHD == 0,]
+test_1 <- test[test$MICHD == 1,]
+```
+
+
