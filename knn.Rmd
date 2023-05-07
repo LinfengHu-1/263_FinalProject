@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(glmnet)
 library(dplyr)
 library(class)
+library(pROC)
 ```
 
 ```{r}
@@ -82,6 +83,9 @@ test <- dat[-train_index, ]
 
 ```{r knn baseline}
 
+train$MICHD <- as.factor(train$MICHD)
+test$MICHD <- as.factor(test$MICHD)
+
 # baseline model fit for k = 1
 knn_model <- knn(train = train,
                       test = test,
@@ -91,7 +95,7 @@ knn_model <- knn(train = train,
 # compute accuracy and test error 
 #test_err <- mean(knn_model != test$MICHD)
 accuracy <- sum(knn_model == test$MICHD)/length(test$MICHD)
-sensitivity_knn <- sensitivty(knn_model, test$MICHD)
+sensitivity_knn <- sensitivity(knn_model, test$MICHD)
 specificity_knn <- specificity(knn_model, test$MICHD)
 
 print("Test Error and Accuracy for Baseline Model with K = 1")
@@ -100,31 +104,32 @@ print(paste0("Accuracy: ", accuracy))
 print(paste0("Sensitivity: ", sensitivity_knn))
 print(paste0("Specificity: ", specificity_knn))
 
-
 # confusion matrix - should we all include cm, and maybe aucroc? 
-cm <- confusionMatrix(knn_model, as.factor(test$MICHD))
+cm <- confusionMatrix(knn_model, test$MICHD)
 cm
+
 
 ```
 
 ```{r knn tuning}
 
-# using 20-fold cross validation to find the optimal k value, since we have around 20K data points
+#using 10-fold cross validation to find the optimal k value, since we have around 20K data points
+# RUN ONLY IF NEEDED - takes a long time, already got optimal k to be k = 27
 
-control <- trainControl(method='repeatedcv', 
-                        number = 20, 
-                        verboseIter = 20
-                        )
-
-set.seed(52)
-knn_fit <- train(MICHD ~ ., 
-                 method = 'knn', 
-                 tuneGrid = expand.grid(k = 1:200), 
-                 trControl = control, 
-                 metric = "Accuracy", 
-                 data = train)
-
-knn_fit
+# control <- trainControl(method='repeatedcv',
+#                         number = 10,
+#                         verboseIter = 20
+#                         )
+# 
+# set.seed(52)
+# knn_fit <- train(MICHD ~ .,
+#                  method = 'knn',
+#                  tuneGrid = expand.grid(k = 1:200),
+#                  trControl = control,
+#                  metric = "Accuracy",
+#                  data = train)
+# 
+# knn_fit
 
 ```
 
@@ -135,26 +140,119 @@ knn_fit
 knn_model <- knn(train = train,
                       test = test,
                       cl = train$MICHD,
-                      k = 18)
+                      k = 27)
 
 # compute accuracy and test error 
 #test_err <- mean(knn_model != test$MICHD)
 accuracy <- sum(knn_model == test$MICHD)/length(test$MICHD)
-#sensitivity_knn <- sensitivty(knn_model, test$MICHD)
-#specificity_knn <- specificity(knn_model, test$MICHD)
+sensitivity_knn <- sensitivity(knn_model, test$MICHD)
+specificity_knn <- specificity(knn_model, test$MICHD)
+auc_score <- auc(roc(test$MICHD, as.numeric(knn_model)))
+roc_curve <- roc(test$MICHD, as.numeric(knn_model))
 
-print("Test Error and Accuracy for K=18")
+print("Test Error and Accuracy for K=27")
 print(paste0("Test Error: ", 1 - accuracy))
 print(paste0("Accuracy: ", accuracy))
-#print(paste0("Sensitivity: ", sensitivity_knn))
-#print(paste0("Specificity: ", specificity_knn))
+print(paste0("Sensitivity: ", sensitivity_knn))
+print(paste0("Specificity: ", specificity_knn))
+print(paste0("AUC Score: ", auc_score))
 
 
 # confusion matrix - should we all include cm, and maybe aucroc? 
-cm <- confusionMatrix(knn_model, as.factor(test$MICHD))
+cm <- confusionMatrix(knn_model, test$MICHD)
 cm
 
 ```
+
+
+### KNN with PCA
+
+```{r pca}
+dat2 <- dat %>% select(-c("CVDINFR4", "CVDCRHD4", "MICHD"))
+dat2 <- sapply(dat2, function (x) as.numeric(x))
+pca <- prcomp(dat2, scale.=TRUE)
+
+summary(pca)
+
+pca30 <- pca$x[,1:30]
+pca30
+
+pca30_df <- data.frame(pca30, MICHD=dat$MICHD)
+pca30_df
+
+set.seed(263)
+train_index <- createDataPartition(pca30_df$MICHD, p = 0.8, list = FALSE)
+train <- pca30_df[train_index, ]
+test <- pca30_df[-train_index, ]
+```
+
+
+```{r knnpc}
+
+knn_model <- knn(train = train,
+                      test = test,
+                      cl = train$MICHD,
+                      k = 1)
+
+cm <- confusionMatrix(knn_model, test$MICHD)
+cm
+```
+
+```{r knnpc tuning}
+
+# control <- trainControl(method='repeatedcv',
+#                         number = 10,
+#                         verboseIter = 20
+#                         )
+# 
+# set.seed(52)
+# knn_fit <- train(MICHD ~ .,
+#                  method = 'knn',
+#                  tuneGrid = expand.grid(k = 1:200),
+#                  trControl = control,
+#                  metric = "Accuracy",
+#                  data = train)
+# 
+# knn_fit
+
+```
+
+```{r knn best}
+knn_model <- knn(train = train,
+                      test = test,
+                      cl = train$MICHD,
+                      k = 198)
+
+accuracy <- sum(knn_model == test$MICHD)/length(test$MICHD)
+sensitivity_knn <- sensitivity(knn_model, test$MICHD)
+specificity_knn <- specificity(knn_model, test$MICHD)
+auc_score <- auc(roc(test$MICHD, as.numeric(knn_model)))
+roc_curve <- roc(test$MICHD, as.numeric(knn_model))
+
+print("Test Error and Accuracy for K=198")
+print(paste0("Test Error: ", 1 - accuracy))
+print(paste0("Accuracy: ", accuracy))
+print(paste0("Sensitivity: ", sensitivity_knn))
+print(paste0("Specificity: ", specificity_knn))
+print(paste0("AUC Score: ", auc_score))
+
+cm <- confusionMatrix(knn_model, test$MICHD)
+cm
+
+
+
+```
+
+```{r random plot}
+
+ggplot(pca30_df, aes(x=PC1, y=PC7, col=MICHD)) + geom_point() + ggtitle("PC1 v PC2")
+
+
+```
+
+
+
+
 
 
 
