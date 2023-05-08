@@ -244,9 +244,19 @@ cm
 ```
 
 ```{r random plot}
+summary(pca)
 
-ggplot(pca30_df, aes(x=PC1, y=PC7, col=MICHD)) + geom_point() + ggtitle("PC1 v PC2")
+cum_var <- cumsum(pca$sdev^2/sum(pca$sdev^2))#[1:30]
+pcs <- seq(1:46)
 
+pc_df <- data.frame(cum_var, pcs)
+
+ggplot(data=pc_df, aes(x=pcs, y=cum_var)) +
+  geom_point(size=2, color='steelblue') + 
+  geom_line(size=0.5, color='steelblue') + 
+  labs(title='Cumulative Proportion of Variance Explained by Principal Components', x='Principal Component', y='Cumulative Proportion of Variance') + 
+  annotate("segment", x = 30, xend = 30, y = 0, yend = cum_var[30], color = "red", linetype = "dashed") +
+  annotate("segment", x = 0, xend = 30, y = cum_var[30] , yend = cum_var[30], color = "red", linetype = "dashed")
 
 ```
 
