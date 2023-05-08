@@ -59,7 +59,7 @@ y <- dat[,"MICHD"] |> as.matrix()
 #define matrix of predictor variables
 x <- dat[, !names(dat) %in% c("MICHD", "CVDINFR4","CVDCRHD4")] |> as.matrix()
 elasticnet.mod = glmnet(x,y,alpha=0.5,family="binomial")
-vip(elasticnet.mod, num_features=10, geom = "point")
+vip(elasticnet.mod, num_features=10, geom = "bar")
 ```
 
 #### Explore useful features

@@ -32,24 +32,16 @@ dat <- dat[ , -which(names(dat) %in% c("MEDSHEPB","TOLDCFS", "HAVECFS", "WORKCFS
 dat$MICHD <- factor(2-dat$MICHD)
 dat$CVDINFR4 <- factor(2-dat$CVDINFR4)
 dat$CVDCRHD4 <- factor(2-dat$CVDCRHD4)
-
-# i believe X is the index column, not needed
 # remove weights
 dat <- dat[, !colnames(dat) %in% c('X', 'LLCPWT2', 'LLCPWT', 'CLLCPWT','STRWT','WT2RAKE')]
 dat <- dat[, !colnames(dat) %in% c('QSTVER', 'STSTR','RAWRAKE')] # remove based on knowledge
-threshold <- .05
-ncol(dat) # 190
-
-dat <- dat[, colMeans(is.na(dat)) <= threshold]
-ncol(dat) # 52 columns left
+threshold <- .05 # now dat has 190 columns
+dat <- dat[, colMeans(is.na(dat)) <= threshold] # 52 columns left
 
 columns_to_impute <- colnames(dat)[colSums(is.na(dat)) > 0]
-#columns_to_impute
 str(dat[,columns_to_impute])
-
 complete_columns <- colnames(dat)[colSums(is.na(dat)) == 0 & 
                                       !colnames(dat) %in% c('MICHD', 'CVDINFR4','CVDCRHD4')]
-
 for (c in columns_to_impute) {
     col <- dat[[c]]
     scaled <- scale(dat[, complete_columns])
